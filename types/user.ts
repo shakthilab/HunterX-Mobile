@@ -30,7 +30,9 @@ export type User = {
   dob?: string;
   birthday?: string;
   daily_protein_goal?: number | null;
-  protein_goal?: number | null;
+  auth_provider?: string;
+  authProvider?: string;
+  provider?: string;
   onboarding_done?: boolean;
   weeklyStreak?: number;
   completedDaysCount?: number;

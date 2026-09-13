@@ -279,9 +279,14 @@ export function EditProfileModal({
     selectedAvatarUrl || user?.avatarUrl,
     selectedAvatarId || user?.avatar_id
   );
-  const providerStr =
-    user?.provider ?? user?.authProvider ?? user?.auth_provider ?? 'EMAIL';
-  const p = String(providerStr).toUpperCase();
+  const rawProvider =
+    user?.auth_provider ?? user?.authProvider ?? user?.provider ?? 'EMAIL';
+  const providerUpper = String(rawProvider).toUpperCase();
+  const p = providerUpper.includes('GOOGLE')
+    ? 'GOOGLE'
+    : providerUpper.includes('APPLE')
+    ? 'APPLE'
+    : providerUpper;
 
   return (
     <Modal

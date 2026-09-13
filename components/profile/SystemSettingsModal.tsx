@@ -185,9 +185,14 @@ export function SystemSettingsModal({
     setConfirmPasswordInput('');
   };
 
-  const providerStr =
-    user?.provider ?? user?.authProvider ?? user?.auth_provider ?? 'EMAIL';
-  const p = String(providerStr).toUpperCase();
+  const rawProvider =
+    user?.auth_provider ?? user?.authProvider ?? user?.provider ?? 'EMAIL';
+  const providerUpper = String(rawProvider).toUpperCase();
+  const p = providerUpper.includes('GOOGLE')
+    ? 'GOOGLE'
+    : providerUpper.includes('APPLE')
+    ? 'APPLE'
+    : providerUpper;
   const isSocialAuth = p === 'GOOGLE' || p === 'APPLE';
 
   const handlePressChangeEmail = () => {

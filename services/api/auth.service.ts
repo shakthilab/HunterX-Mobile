@@ -44,6 +44,14 @@ export function mapBackendUserToUser(u: any): User {
 
   prefetchCurrentUserAvatar(avatarUrl);
 
+  const rawProvider = u.auth_provider || u.authProvider || u.provider || 'EMAIL';
+  const upperProvider = String(rawProvider).toUpperCase();
+  const normalizedProvider = upperProvider.includes('GOOGLE')
+    ? 'GOOGLE'
+    : upperProvider.includes('APPLE')
+    ? 'APPLE'
+    : upperProvider;
+
   return {
     ...u,
     id: u.id ? u.id.toString() : '',
@@ -66,6 +74,9 @@ export function mapBackendUserToUser(u: any): User {
     birthday: dob,
     daily_protein_goal: proteinGoal,
     protein_goal: proteinGoal,
+    auth_provider: normalizedProvider,
+    authProvider: normalizedProvider,
+    provider: normalizedProvider,
     onboarding_done: !!isOnboarded,
   };
 }
@@ -180,7 +191,11 @@ export async function loginWithGoogle(
       throw new Error('Invalid token response from backend');
     }
     await tokenStorage.setTokens(accessToken, refreshToken);
-    return { user: mapBackendUserToUser(data.data.user), isNew: !!data.data.isNew };
+    const googleUser = data.data.user || {};
+    if (!googleUser.auth_provider && !googleUser.authProvider && !googleUser.provider) {
+      googleUser.auth_provider = 'GOOGLE';
+    }
+    return { user: mapBackendUserToUser(googleUser), isNew: !!data.data.isNew };
   } catch (err: any) {
     const isNotFound = err?.response?.status === 404 || (err?.message && err.message.includes('404'));
     if (isNotFound) {
@@ -197,7 +212,11 @@ export async function loginWithGoogle(
         throw new Error('Invalid token response from backend');
       }
       await tokenStorage.setTokens(accessToken, refreshToken);
-      return { user: mapBackendUserToUser(data.data.user), isNew: !!data.data.isNew };
+      const googleUserFallback = data.data.user || {};
+      if (!googleUserFallback.auth_provider && !googleUserFallback.authProvider && !googleUserFallback.provider) {
+        googleUserFallback.auth_provider = 'GOOGLE';
+      }
+      return { user: mapBackendUserToUser(googleUserFallback), isNew: !!data.data.isNew };
     }
     throw new Error(extractErrorMessage(err));
   }
