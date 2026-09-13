@@ -5,9 +5,9 @@ import {
   StyleSheet,
   TouchableOpacity,
   Dimensions,
-  Image,
   Platform,
 } from 'react-native';
+import { Image } from 'expo-image';
 import Animated, {
   useSharedValue,
   useAnimatedStyle,
@@ -632,14 +632,15 @@ export const DragonRewardReveal: React.FC<DragonRewardRevealProps> = ({
 
       {/* Main Egg Element */}
       <Animated.View style={[styles.eggWrapper, animatedEggStyle]}>
-        <Image source={eggImageSource} style={styles.eggImage} resizeMode="contain" />
+        <Image source={eggImageSource} style={styles.eggImage} contentFit="contain" />
 
         {/* Glowing Purple/Vein Overlay */}
         <Animated.View style={[styles.eggOverlay, animatedVeinStyle]}>
           <Image
             source={eggImageSource}
-            style={[styles.eggImage, { tintColor: '#C084FC' }]}
-            resizeMode="contain"
+            style={styles.eggImage}
+            contentFit="contain"
+            tintColor="#C084FC"
           />
         </Animated.View>
 
@@ -647,8 +648,9 @@ export const DragonRewardReveal: React.FC<DragonRewardRevealProps> = ({
         <Animated.View style={[styles.eggOverlay, animatedGoldTintStyle]}>
           <Image
             source={eggImageSource}
-            style={[styles.eggImage, { tintColor: '#F59E0B' }]}
-            resizeMode="contain"
+            style={styles.eggImage}
+            contentFit="contain"
+            tintColor="#F59E0B"
           />
         </Animated.View>
       </Animated.View>

@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { Platform } from 'react-native';
+import { AppState, AppStateStatus, Platform } from 'react-native';
 import { Stack, usePathname } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import * as SplashScreen from 'expo-splash-screen';
@@ -19,6 +19,7 @@ import {
 
 import { colors } from '@/theme/colors';
 import { useAuthStore } from '@/store/useAuthStore';
+import { useMetricsStore } from '@/store/useMetricsStore';
 import { GlobalToast } from '@/components/common/GlobalToast';
 import { preloadAppAssets } from '@/services/media/preloadAssets';
 import { getAvatars } from '@/services/api/avatar.service';
@@ -101,6 +102,31 @@ export default function RootLayout() {
     // Warms the avatar catalog cache so the user's actual avatar_id resolves
     // to its image on first paint instead of falling back to a generic avatar.
     getAvatars().catch(() => {});
+  }, []);
+
+  // Health data (steps, calories, etc.) changes outside the app whenever
+  // Apple Health / Health Connect records activity while HunterX isn't
+  // running. Refresh it here — at the root, not just inside the Metrics
+  // screen — so a cold launch or returning from the background always syncs
+  // before the user even taps the Metrics tab, instead of only refreshing
+  // once they happen to already be looking at it.
+  useEffect(() => {
+    const refreshHealthMetrics = () => {
+      const { isHealthConnected, timeRange } = useMetricsStore.getState();
+      if (!isHealthConnected) return;
+      useMetricsStore.getState().fetchRangeData(timeRange);
+      useMetricsStore.getState().syncHealthMetricsIfNeeded();
+    };
+
+    // Cold start: wait for the persisted connection state to load first.
+    useMetricsStore.getState().initFromStorage().then(refreshHealthMetrics);
+
+    const subscription = AppState.addEventListener('change', (nextState: AppStateStatus) => {
+      if (nextState === 'active') {
+        refreshHealthMetrics();
+      }
+    });
+    return () => subscription.remove();
   }, []);
 
   useEffect(() => {

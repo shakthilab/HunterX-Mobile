@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { StyleSheet, View, StatusBar, ActivityIndicator } from 'react-native';
+import { StyleSheet, View, StatusBar, ActivityIndicator, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useShallow } from 'zustand/react/shallow';
 
@@ -9,9 +9,10 @@ import { MetricsDashboardView } from '@/components/features/fitness/MetricsDashb
 
 export default function MetricsScreen() {
   const router = useRouter();
-  const { isHealthConnected, isLoaded, initFromStorage } = useMetricsStore(
+  const { isHealthConnected, connectedProvider, isLoaded, initFromStorage } = useMetricsStore(
     useShallow((state) => ({
       isHealthConnected: state.isHealthConnected,
+      connectedProvider: state.connectedProvider,
       isLoaded: state.isLoaded,
       initFromStorage: state.initFromStorage,
     }))
@@ -20,6 +21,15 @@ export default function MetricsScreen() {
   useEffect(() => {
     initFromStorage();
   }, [initFromStorage]);
+
+  useEffect(() => {
+    console.log('====================================================');
+    console.log(`📱 [MetricsScreen] Tab Focused / Opened on ${Platform.OS}`);
+    console.log(`   isLoaded: ${isLoaded}`);
+    console.log(`   isHealthConnected: ${isHealthConnected}`);
+    console.log(`   connectedProvider: ${connectedProvider || 'None'}`);
+    console.log('====================================================');
+  }, [isLoaded, isHealthConnected, connectedProvider]);
 
   const handleBack = () => {
     if (router.canGoBack()) {

@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Alert,
   Animated,
-  Image,
   KeyboardAvoidingView,
   Modal,
   Platform,
@@ -14,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
@@ -22,6 +22,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Screen } from '@/components/common/Screen';
 import { fontFamilies } from '@/theme/typography';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl, DEFAULT_BLURHASH } from '@/services/media/cloudinary';
 import { submitRating } from '@/services/api/rating.service';
 import { showGlobalToast } from '@/store/useToastStore';
 
@@ -166,9 +167,12 @@ export function RateHunterModal({ visible, onClose }: RateHunterModalProps) {
         {/* FULLSCREEN BACKGROUND ARTWORK CONTAINER */}
         <View style={StyleSheet.absoluteFillObject} pointerEvents="none">
           <Image
-            source={CLOUDINARY_ASSETS.rate_hunter_knight}
+            source={{ uri: optimizeCloudinaryUrl(CLOUDINARY_ASSETS.rate_hunter_knight.uri, 1200) }}
             style={styles.fullScreenKnightBg}
-            resizeMode="cover"
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            placeholder={{ blurhash: DEFAULT_BLURHASH }}
+            transition={200}
           />
 
           {/* Bottom Dark Gradient for High-Contrast Readable Review Card */}

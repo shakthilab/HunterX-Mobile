@@ -1,103 +1,90 @@
 import { Platform } from 'react-native';
 import type { HealthAdapter, DailyHealthSummary, DayBarSample } from './HealthAdapter';
+import { devLog, devWarn } from './devLog';
 
-let AppleHealthKit: any = null;
+// react-native-health (the old bridge-only HealthKit binding this adapter
+// used to wrap) never wired up under this app's fully bridgeless New
+// Architecture runtime — its native module registered but exposed zero
+// methods (confirmed via a device diagnostic: NativeModules.AppleHealthKit
+// existed but had no keys). @kingstinct/react-native-healthkit is built on
+// Nitro Modules (JSI host objects), which work regardless of bridge/
+// bridgeless mode, so it's what actually talks to HealthKit here.
+let HealthKit: any = null;
 
 try {
   if (Platform.OS === 'ios') {
-    const healthModule = require('react-native-health');
-    AppleHealthKit = healthModule.default || healthModule;
+    HealthKit = require('@kingstinct/react-native-healthkit');
   }
 } catch (e) {
-  console.warn('[AppleHealthAdapter] Could not import react-native-health:', e);
+  devWarn('[AppleHealthAdapter] Could not import @kingstinct/react-native-healthkit:', e);
 }
 
-const HEALTH_PERMISSIONS = {
-  permissions: {
-    read: AppleHealthKit?.Constants?.Permissions
-      ? [
-          AppleHealthKit.Constants.Permissions.StepCount,
-          AppleHealthKit.Constants.Permissions.Steps,
-          AppleHealthKit.Constants.Permissions.ActiveEnergyBurned,
-          AppleHealthKit.Constants.Permissions.DistanceWalkingRunning,
-          AppleHealthKit.Constants.Permissions.HeartRate,
-          AppleHealthKit.Constants.Permissions.SleepAnalysis,
-          AppleHealthKit.Constants.Permissions.Workout,
-        ].filter(Boolean)
-      : [
-          'StepCount',
-          'Steps',
-          'ActiveEnergyBurned',
-          'DistanceWalkingRunning',
-          'HeartRate',
-          'SleepAnalysis',
-          'Workout',
-        ],
-    write: [],
-  },
-};
+const READ_TYPES = [
+  'HKQuantityTypeIdentifierStepCount',
+  'HKQuantityTypeIdentifierActiveEnergyBurned',
+  'HKQuantityTypeIdentifierDistanceWalkingRunning',
+  'HKQuantityTypeIdentifierHeartRate',
+  'HKCategoryTypeIdentifierSleepAnalysis',
+  'HKWorkoutTypeIdentifier',
+] as const;
+
+// CategoryValueSleepAnalysis: inBed = 0, awake = 2 — every other value
+// (asleepUnspecified/asleepCore/asleepDeep/asleepREM) counts as actual sleep.
+const SLEEP_NON_ASLEEP_VALUES = new Set([0, 2]);
+
+// HealthKit statistics buckets are aligned to calendar days in the device's
+// local timezone, but Date#toISOString() always renders in UTC — for any
+// timezone ahead of UTC (e.g. IST, UTC+5:30) that pushes local midnight onto
+// the previous UTC day, silently shifting every bucket by one day. Always key
+// dates by their local calendar day instead of the UTC ISO string.
+function localDateKey(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
 
 export class AppleHealthAdapter implements HealthAdapter {
   private isInitialized = false;
-  private isSimulatorFallback = false;
 
   async isAvailable(): Promise<boolean> {
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS !== 'ios' || !HealthKit) {
       return false;
     }
-
-    if (!AppleHealthKit || typeof AppleHealthKit.initHealthKit !== 'function') {
-      console.log('[AppleHealthAdapter] Native HealthKit module missing or running in iOS simulator — enabling fallback mode');
-      this.isSimulatorFallback = true;
-      return true;
-    }
-
-    return new Promise((resolve) => {
-      if (typeof AppleHealthKit.isAvailable !== 'function') {
-        this.isSimulatorFallback = true;
-        return resolve(true);
+    try {
+      if (typeof HealthKit.isHealthDataAvailableAsync === 'function') {
+        return await HealthKit.isHealthDataAvailableAsync();
       }
-      AppleHealthKit.isAvailable((err: Object, available: boolean) => {
-        if (err || !available) {
-          console.log('[AppleHealthAdapter] AppleHealthKit.isAvailable returned false/error — enabling iOS simulator fallback mode');
-          this.isSimulatorFallback = true;
-          return resolve(true);
-        }
-        resolve(true);
-      });
-    });
+      if (typeof HealthKit.isHealthDataAvailable === 'function') {
+        return HealthKit.isHealthDataAvailable();
+      }
+      return false;
+    } catch (e) {
+      devWarn('[AppleHealthAdapter] isAvailable failed:', e);
+      return false;
+    }
   }
 
   async requestPermissions(): Promise<boolean> {
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS !== 'ios' || !HealthKit || typeof HealthKit.requestAuthorization !== 'function') {
       return false;
     }
-
-    if (this.isSimulatorFallback || !AppleHealthKit || typeof AppleHealthKit.initHealthKit !== 'function') {
-      console.log('[AppleHealthAdapter] Requesting permissions in iOS simulator fallback mode — granting permission');
+    try {
+      // Safe to call every time — HealthKit only shows the system prompt for
+      // types not yet decided on; already-authorized types resolve silently.
+      const granted = await HealthKit.requestAuthorization({ toRead: READ_TYPES });
       this.isInitialized = true;
-      return true;
+      return !!granted;
+    } catch (e) {
+      devWarn('[AppleHealthAdapter] requestPermissions failed:', e);
+      return false;
     }
-
-    return new Promise((resolve) => {
-      AppleHealthKit.initHealthKit(HEALTH_PERMISSIONS, (err: string) => {
-        if (err) {
-          console.warn('[AppleHealthAdapter] initHealthKit error:', err, '— falling back to simulator mode');
-          this.isSimulatorFallback = true;
-          this.isInitialized = true;
-          return resolve(true);
-        }
-        this.isInitialized = true;
-        resolve(true);
-      });
-    });
   }
 
   async checkPermissions(): Promise<boolean> {
-    if (Platform.OS !== 'ios') {
-      return false;
-    }
-    return this.requestPermissions();
+    // HealthKit intentionally never exposes real read-permission status — see
+    // the HealthAdapter interface doc. Callers should not rely on this on iOS.
+    return Platform.OS === 'ios';
   }
 
   private async ensureInitialized(): Promise<boolean> {
@@ -105,10 +92,72 @@ export class AppleHealthAdapter implements HealthAdapter {
     return this.requestPermissions();
   }
 
-  async getTodaySummary(): Promise<DailyHealthSummary> {
-    const todayStr = new Date().toISOString().split('T')[0];
+  private async sumQuantity(identifier: string, unit: string, startDate: Date, endDate: Date): Promise<number> {
+    if (!HealthKit) return 0;
+    try {
+      const result = await HealthKit.queryStatisticsForQuantity(identifier, ['cumulativeSum'], {
+        filter: { date: { startDate, endDate } },
+        unit,
+      });
+      return result?.sumQuantity?.quantity || 0;
+    } catch (e) {
+      devWarn(`[AppleHealthAdapter] sumQuantity(${identifier}) failed:`, e);
+      return 0;
+    }
+  }
+
+  private async averageQuantity(identifier: string, unit: string, startDate: Date, endDate: Date): Promise<number> {
+    if (!HealthKit) return 0;
+    try {
+      const result = await HealthKit.queryStatisticsForQuantity(identifier, ['discreteAverage'], {
+        filter: { date: { startDate, endDate } },
+        unit,
+      });
+      return result?.averageQuantity?.quantity || 0;
+    } catch (e) {
+      devWarn(`[AppleHealthAdapter] averageQuantity(${identifier}) failed:`, e);
+      return 0;
+    }
+  }
+
+  private async sumSleepMinutes(startDate: Date, endDate: Date): Promise<number> {
+    if (!HealthKit) return 0;
+    try {
+      const samples = await HealthKit.queryCategorySamples('HKCategoryTypeIdentifierSleepAnalysis', {
+        filter: { date: { startDate, endDate } },
+        limit: 0,
+      });
+      let totalMs = 0;
+      (samples || []).forEach((sample: any) => {
+        if (SLEEP_NON_ASLEEP_VALUES.has(sample.value)) return;
+        const start = new Date(sample.startDate).getTime();
+        const end = new Date(sample.endDate).getTime();
+        if (end > start) totalMs += end - start;
+      });
+      return Math.round(totalMs / (1000 * 60));
+    } catch (e) {
+      devWarn('[AppleHealthAdapter] sumSleepMinutes failed:', e);
+      return 0;
+    }
+  }
+
+  private async countWorkouts(startDate: Date, endDate: Date): Promise<number> {
+    if (!HealthKit) return 0;
+    try {
+      const workouts = await HealthKit.queryWorkoutSamples({
+        filter: { date: { startDate, endDate } },
+        limit: 0,
+      });
+      return Array.isArray(workouts) ? workouts.length : 0;
+    } catch (e) {
+      devWarn('[AppleHealthAdapter] countWorkouts failed:', e);
+      return 0;
+    }
+  }
+
+  private async summaryFor(startDate: Date, endDate: Date, dateLabel: string): Promise<DailyHealthSummary> {
     const emptySummary: DailyHealthSummary = {
-      date: todayStr,
+      date: dateLabel,
       steps: 0,
       calories: 0,
       distanceKm: 0,
@@ -118,282 +167,67 @@ export class AppleHealthAdapter implements HealthAdapter {
       workoutCount: 0,
     };
 
-    if (Platform.OS !== 'ios') {
+    if (Platform.OS !== 'ios' || !HealthKit) {
       return emptySummary;
-    }
-
-    if (this.isSimulatorFallback) {
-      return {
-        date: todayStr,
-        steps: 8420,
-        calories: 460,
-        distanceKm: 6.2,
-        activeMinutes: 45,
-        heartRate: 74,
-        sleepMinutes: 440,
-        workoutCount: 1,
-      };
     }
 
     const initialized = await this.ensureInitialized();
     if (!initialized) return emptySummary;
 
-    const now = new Date();
-    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0).toISOString();
-    const endOfToday = now.toISOString();
-
-    const options = {
-      startDate: startOfToday,
-      endDate: endOfToday,
-    };
-
     try {
-      const steps = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getStepCount !== 'function') {
-          return res(0);
-        }
-        AppleHealthKit.getStepCount(
-          { date: endOfToday, includeManuallyAdded: true },
-          (err: any, results: { value: number }) => {
-            if (!err && results && typeof results.value === 'number') {
-              return res(Math.round(results.value));
-            }
-            AppleHealthKit.getStepCount(options, (err2: any, results2: { value: number }) => {
-              if (!err2 && results2 && typeof results2.value === 'number') {
-                return res(Math.round(results2.value));
-              }
-              res(0);
-            });
-          }
-        );
-      });
+      const [steps, calories, distanceMeters, heartRate, sleepMinutes, workoutCount] = await Promise.all([
+        this.sumQuantity('HKQuantityTypeIdentifierStepCount', 'count', startDate, endDate),
+        this.sumQuantity('HKQuantityTypeIdentifierActiveEnergyBurned', 'kcal', startDate, endDate),
+        this.sumQuantity('HKQuantityTypeIdentifierDistanceWalkingRunning', 'm', startDate, endDate),
+        this.averageQuantity('HKQuantityTypeIdentifierHeartRate', 'count/min', startDate, endDate),
+        this.sumSleepMinutes(startDate, endDate),
+        this.countWorkouts(startDate, endDate),
+      ]);
 
-      const calories = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getActiveEnergyBurned !== 'function') return res(0);
-        AppleHealthKit.getActiveEnergyBurned(options, (err: Object, results: Array<{ value: number }>) => {
-          if (!err && Array.isArray(results) && results.length > 0) {
-            const total = results.reduce((acc, curr) => acc + (curr.value || 0), 0);
-            if (total > 0) return res(Math.round(total));
-          }
-          res(0);
-        });
-      });
-
-      const distanceKm = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getDistanceWalkingRunning !== 'function') return res(0);
-        AppleHealthKit.getDistanceWalkingRunning(
-          { ...options, unit: 'meter' },
-          (err: Object, results: { value: number }) => {
-            if (!err && results && typeof results.value === 'number' && results.value > 0) {
-              const km = results.value / 1000;
-              return res(parseFloat(km.toFixed(2)));
-            }
-            res(0);
-          }
-        );
-      });
-
-      const heartRate = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getHeartRateSamples !== 'function') return res(0);
-        AppleHealthKit.getHeartRateSamples(
-          { ...options, limit: 10 },
-          (err: Object, results: Array<{ value: number }>) => {
-            if (err || !Array.isArray(results) || results.length === 0) return res(0);
-            const sum = results.reduce((acc, curr) => acc + (curr.value || 0), 0);
-            res(Math.round(sum / results.length));
-          }
-        );
-      });
-
-      const sleepMinutes = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getSleepSamples !== 'function') return res(0);
-        const yesterdayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1, 18, 0, 0).toISOString();
-        AppleHealthKit.getSleepSamples(
-          { startDate: yesterdayStart, endDate: endOfToday },
-          (err: Object, results: Array<{ startDate: string; endDate: string; value: string }>) => {
-            if (err || !Array.isArray(results)) return res(0);
-            let totalMs = 0;
-            results.forEach((sample) => {
-              if (sample.startDate && sample.endDate) {
-                const dur = new Date(sample.endDate).getTime() - new Date(sample.startDate).getTime();
-                if (dur > 0) totalMs += dur;
-              }
-            });
-            res(Math.round(totalMs / (1000 * 60)));
-          }
-        );
-      });
-
-      const workoutCount = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getSamples !== 'function') return res(0);
-        AppleHealthKit.getSamples(
-          { ...options, type: 'Workout' },
-          (err: Object, results: Array<unknown>) => {
-            if (err || !Array.isArray(results)) return res(0);
-            res(results.length);
-          }
-        );
-      });
-
-      const activeMinutes = Math.min(Math.round(steps / 100) + (workoutCount * 30), 180);
+      const activeMinutes = Math.min(Math.round(steps / 100) + workoutCount * 30, 180);
 
       return {
-        date: todayStr,
-        steps,
-        calories,
-        distanceKm,
+        date: dateLabel,
+        steps: Math.round(steps),
+        calories: Math.round(calories),
+        distanceKm: parseFloat((distanceMeters / 1000).toFixed(2)),
         activeMinutes,
-        heartRate,
+        heartRate: Math.round(heartRate),
         sleepMinutes,
         workoutCount,
       };
     } catch (e) {
-      console.warn('[AppleHealthAdapter] getTodaySummary failed:', e);
+      devWarn('[AppleHealthAdapter] summaryFor failed:', e);
       return emptySummary;
     }
+  }
+
+  async getTodaySummary(): Promise<DailyHealthSummary> {
+    const now = new Date();
+    const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0);
+    const summary = await this.summaryFor(startOfToday, now, localDateKey(now));
+
+    devLog('----------------------------------------------------');
+    devLog('📊 [AppleHealthAdapter] Today Summary from HealthKit:');
+    devLog('   Date:', summary.date);
+    devLog('   Steps:', summary.steps);
+    devLog('   Calories (kcal):', summary.calories);
+    devLog('   Distance (km):', summary.distanceKm);
+    devLog('   Heart Rate (bpm):', summary.heartRate);
+    devLog('   Sleep (mins):', summary.sleepMinutes);
+    devLog('   Active Mins:', summary.activeMinutes);
+    devLog('   Workouts:', summary.workoutCount);
+    devLog('----------------------------------------------------');
+
+    return summary;
   }
 
   async getYesterdaySummary(): Promise<DailyHealthSummary> {
     const now = new Date();
     const yesterday = new Date(now.getFullYear(), now.getMonth(), now.getDate() - 1);
-    const yesterdayStr = yesterday.toISOString().split('T')[0];
-
-    const emptySummary: DailyHealthSummary = {
-      date: yesterdayStr,
-      steps: 0,
-      calories: 0,
-      distanceKm: 0,
-      activeMinutes: 0,
-      heartRate: 0,
-      sleepMinutes: 0,
-      workoutCount: 0,
-    };
-
-    if (Platform.OS !== 'ios') {
-      return emptySummary;
-    }
-
-    if (this.isSimulatorFallback) {
-      return {
-        date: yesterdayStr,
-        steps: 7150,
-        calories: 390,
-        distanceKm: 5.1,
-        activeMinutes: 38,
-        heartRate: 72,
-        sleepMinutes: 420,
-        workoutCount: 1,
-      };
-    }
-
-    const initialized = await this.ensureInitialized();
-    if (!initialized) return emptySummary;
-
-    const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0).toISOString();
-    const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59).toISOString();
-
-    const options = {
-      startDate: startOfYesterday,
-      endDate: endOfYesterday,
-    };
-
-    try {
-      const steps = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getStepCount !== 'function') return res(0);
-        AppleHealthKit.getStepCount({ date: endOfYesterday, includeManuallyAdded: true }, (err: any, results: { value: number }) => {
-          if (!err && results && typeof results.value === 'number') {
-            return res(Math.round(results.value));
-          }
-          AppleHealthKit.getStepCount(options, (err2: any, results2: { value: number }) => {
-            if (!err2 && results2 && typeof results2.value === 'number') {
-              return res(Math.round(results2.value));
-            }
-            res(0);
-          });
-        });
-      });
-
-      const calories = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getActiveEnergyBurned !== 'function') return res(0);
-        AppleHealthKit.getActiveEnergyBurned(options, (err: Object, results: Array<{ value: number }>) => {
-          if (!err && Array.isArray(results) && results.length > 0) {
-            const total = results.reduce((acc, curr) => acc + (curr.value || 0), 0);
-            if (total > 0) return res(Math.round(total));
-          }
-          res(0);
-        });
-      });
-
-      const distanceKm = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getDistanceWalkingRunning !== 'function') return res(0);
-        AppleHealthKit.getDistanceWalkingRunning(
-          { ...options, unit: 'meter' },
-          (err: Object, results: { value: number }) => {
-            if (!err && results && typeof results.value === 'number' && results.value > 0) {
-              return res(parseFloat(((results.value || 0) / 1000).toFixed(2)));
-            }
-            res(0);
-          }
-        );
-      });
-
-      const heartRate = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getHeartRateSamples !== 'function') return res(0);
-        AppleHealthKit.getHeartRateSamples(
-          { ...options, limit: 20 },
-          (err: Object, results: Array<{ value: number }>) => {
-            if (err || !Array.isArray(results) || results.length === 0) return res(0);
-            const sum = results.reduce((acc, curr) => acc + (curr.value || 0), 0);
-            res(Math.round(sum / results.length));
-          }
-        );
-      });
-
-      const sleepMinutes = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getSleepSamples !== 'function') return res(0);
-        AppleHealthKit.getSleepSamples(
-          { startDate: startOfYesterday, endDate: endOfYesterday },
-          (err: Object, results: Array<{ startDate: string; endDate: string }>) => {
-            if (err || !Array.isArray(results)) return res(0);
-            let totalMs = 0;
-            results.forEach((sample) => {
-              if (sample.startDate && sample.endDate) {
-                const dur = new Date(sample.endDate).getTime() - new Date(sample.startDate).getTime();
-                if (dur > 0) totalMs += dur;
-              }
-            });
-            res(Math.round(totalMs / (1000 * 60)));
-          }
-        );
-      });
-
-      const workoutCount = await new Promise<number>((res) => {
-        if (typeof AppleHealthKit.getSamples !== 'function') return res(0);
-        AppleHealthKit.getSamples(
-          { ...options, type: 'Workout' },
-          (err: Object, results: Array<unknown>) => {
-            if (err || !Array.isArray(results)) return res(0);
-            res(results.length);
-          }
-        );
-      });
-
-      const activeMinutes = Math.min(Math.round(steps / 100) + (workoutCount * 30), 180);
-
-      return {
-        date: yesterdayStr,
-        steps,
-        calories,
-        distanceKm,
-        activeMinutes,
-        heartRate,
-        sleepMinutes,
-        workoutCount,
-      };
-    } catch (e) {
-      console.warn('[AppleHealthAdapter] getYesterdaySummary failed:', e);
-      return emptySummary;
-    }
+    const startOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 0, 0, 0);
+    const endOfYesterday = new Date(yesterday.getFullYear(), yesterday.getMonth(), yesterday.getDate(), 23, 59, 59);
+    return this.summaryFor(startOfYesterday, endOfYesterday, localDateKey(yesterday));
   }
 
   async getWeekBarSamples(): Promise<DayBarSample[]> {
@@ -408,7 +242,7 @@ export class AppleHealthAdapter implements HealthAdapter {
     for (let i = 0; i < 7; i++) {
       const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + i);
       weekDays.push({
-        dateStr: d.toISOString().split('T')[0],
+        dateStr: localDateKey(d),
         dayLabel: dayNames[d.getDay()],
         isCurrent: d.toDateString() === now.toDateString(),
       });
@@ -422,65 +256,55 @@ export class AppleHealthAdapter implements HealthAdapter {
       isCurrent: w.isCurrent,
     }));
 
-    if (Platform.OS !== 'ios') {
-      return emptyBars;
-    }
-
-    if (this.isSimulatorFallback) {
-      const mockSteps = [6200, 8400, 7900, 9100, 5400, 10200, 8420];
-      const maxTarget = 10000;
-      return weekDays.map((w, idx) => ({
-        day: w.dayLabel,
-        label: w.dayLabel,
-        value: Math.min(Math.round(((mockSteps[idx] || 5000) / maxTarget) * 100), 100),
-        steps: mockSteps[idx] || 5000,
-        isCurrent: w.isCurrent,
-      }));
-    }
-
-    if (!AppleHealthKit || typeof AppleHealthKit.getDailyStepCountSamples !== 'function') {
+    if (Platform.OS !== 'ios' || !HealthKit) {
       return emptyBars;
     }
 
     const initialized = await this.ensureInitialized();
-    if (!initialized) {
+    if (!initialized) return emptyBars;
+
+    const startOfWeek = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate(), 0, 0, 0);
+
+    try {
+      const buckets = await HealthKit.queryStatisticsCollectionForQuantity(
+        'HKQuantityTypeIdentifierStepCount',
+        ['cumulativeSum'],
+        startOfWeek,
+        { day: 1 },
+        { filter: { date: { startDate: startOfWeek, endDate: now } }, unit: 'count' }
+      );
+
+      const map: Record<string, number> = {};
+      (buckets || []).forEach((bucket: any) => {
+        if (!bucket.startDate) return;
+        const dStr = localDateKey(new Date(bucket.startDate));
+        map[dStr] = (map[dStr] || 0) + (bucket.sumQuantity?.quantity || 0);
+      });
+
+      const maxTarget = 10000;
+      const bars: DayBarSample[] = weekDays.map((w) => {
+        const stepVal = Math.round(map[w.dateStr] || 0);
+        const pct = Math.min(Math.round((stepVal / maxTarget) * 100), 100);
+        return {
+          day: w.dayLabel,
+          label: w.dayLabel,
+          value: pct,
+          steps: stepVal,
+          isCurrent: w.isCurrent,
+        };
+      });
+
+      devLog('----------------------------------------------------');
+      devLog('📅 [AppleHealthAdapter] Weekly Steps Read from HealthKit:');
+      bars.forEach((b, idx) => {
+        devLog(`   ${b.day} (${weekDays[idx].dateStr}): ${b.steps} steps ${b.isCurrent ? '👈 [TODAY]' : ''}`);
+      });
+      devLog('----------------------------------------------------');
+
+      return bars;
+    } catch (e) {
+      devWarn('[AppleHealthAdapter] getWeekBarSamples failed:', e);
       return emptyBars;
     }
-
-    const startDate = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate(), 0, 0, 0).toISOString();
-
-    return new Promise((resolve) => {
-      AppleHealthKit.getDailyStepCountSamples(
-        { startDate, endDate: new Date().toISOString(), includeManuallyAdded: true },
-        (err: Object, results: Array<{ date: string; value: number }>) => {
-          if (err || !Array.isArray(results)) {
-            return resolve(emptyBars);
-          }
-
-          const maxTarget = 10000;
-          const map: Record<string, number> = {};
-          results.forEach((r) => {
-            if (r.date) {
-              const dStr = r.date.split('T')[0];
-              map[dStr] = (map[dStr] || 0) + (r.value || 0);
-            }
-          });
-
-          const bars: DayBarSample[] = weekDays.map((w) => {
-            const stepVal = map[w.dateStr] || 0;
-            const pct = Math.min(Math.round((stepVal / maxTarget) * 100), 100);
-            return {
-              day: w.dayLabel,
-              label: w.dayLabel,
-              value: pct,
-              steps: stepVal,
-              isCurrent: w.isCurrent,
-            };
-          });
-
-          resolve(bars);
-        }
-      );
-    });
   }
 }

@@ -301,9 +301,7 @@ export default function ProfileScreen() {
       case 'activity':
         setIsRecentActivityModalVisible(true);
         break;
-      case 'achievements':
-        router.push('/(tabs)/achievements');
-        break;
+
       case 'settings':
         setIsSettingsModalVisible(true);
         break;
@@ -555,11 +553,7 @@ export default function ProfileScreen() {
             label="Activities"
             onPress={() => handleMenuPress('activity')}
           />
-          <MenuItem
-            icon="trophy-outline"
-            label="Achievements"
-            onPress={() => handleMenuPress('achievements')}
-          />
+
           <MenuItem
             icon="settings-outline"
             label="System Settings"

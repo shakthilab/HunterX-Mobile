@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,14 +7,17 @@ import {
   ScrollView,
   ActivityIndicator,
   Alert,
+  Platform,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 
 import { fontFamilies } from '@/theme/typography';
 import { useMetricsStore } from '@/store/useMetricsStore';
+import { healthConnectAdapter, appleHealthAdapter } from '@/services/health/healthService';
 import { OrbitalHealthGraphic } from './OrbitalHealthGraphic';
 import { MountainFooterGraphic } from './MountainFooterGraphic';
 import { HealthBackgroundDecor } from './HealthBackgroundDecor';
@@ -40,7 +43,31 @@ export function ConnectHealthView({
     connectedProvider,
     connectProvider,
     disconnectProvider,
-  } = useMetricsStore();
+  } = useMetricsStore(
+    useShallow((state) => ({
+      isHealthConnected: state.isHealthConnected,
+      connectedProvider: state.connectedProvider,
+      connectProvider: state.connectProvider,
+      disconnectProvider: state.disconnectProvider,
+    }))
+  );
+
+  useEffect(() => {
+    console.log('====================================================');
+    console.log(`🔌 [ConnectHealthView] Connect Screen Mounted on ${Platform.OS}`);
+    if (Platform.OS === 'android') {
+      console.log('   Checking Android Health Connect SDK availability...');
+      healthConnectAdapter.isAvailable().then((avail) => {
+        console.log(`   Health Connect isAvailable result on mount: ${avail}`);
+      });
+    } else if (Platform.OS === 'ios') {
+      console.log('   Checking iOS Apple Health availability...');
+      appleHealthAdapter.isAvailable().then((avail) => {
+        console.log(`   Apple Health isAvailable result on mount: ${avail}`);
+      });
+    }
+    console.log('====================================================');
+  }, []);
 
   const [selectedProvider, setSelectedProvider] = useState<
     'apple_health' | 'health_connect'

@@ -1,5 +1,5 @@
 import React, { useMemo } from 'react';
-import { Image, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import Svg, { Circle } from 'react-native-svg';
@@ -7,7 +7,7 @@ import Svg, { Circle } from 'react-native-svg';
 import { fontFamilies } from '@/theme/typography';
 import { getAvatarSource } from '@/components/profile/AvatarSelectionModal';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
-import { DEFAULT_BLURHASH } from '@/services/media/cloudinary';
+import { DEFAULT_BLURHASH, optimizeCloudinaryUrl } from '@/services/media/cloudinary';
 import type { WeekStatus } from '@/types/user';
 import { DayTrackerItem, generateWeekDaysFromWeekStatus } from './WeeklyTracker';
 
@@ -42,8 +42,14 @@ export function WeeklyProgressCard({
     return activeDays.filter((d) => d.status === 'completed' || (d.isToday && d.isDone)).length;
   }, [completedDaysCount, activeDays]);
 
-  const imageSource =
+  const rawImageSource =
     typeof characterImageSource === 'string' ? { uri: characterImageSource } : characterImageSource;
+  // A local require() asset comes through as a plain number, not an object —
+  // only rewrite the URL when there's actually a remote uri to optimize.
+  const imageSource =
+    rawImageSource && typeof rawImageSource === 'object' && typeof rawImageSource.uri === 'string'
+      ? { uri: optimizeCloudinaryUrl(rawImageSource.uri, 500) }
+      : rawImageSource;
 
   const radius = 20;
   const strokeWidth = 4;
@@ -55,7 +61,14 @@ export function WeeklyProgressCard({
     <View style={styles.bottomCard}>
       {/* Full-Height Right Overlay Character Image */}
       <View style={styles.characterImageWrapper} pointerEvents="none">
-        <Image source={imageSource} style={styles.characterImage} resizeMode="cover" />
+        <ExpoImage
+          source={imageSource}
+          style={styles.characterImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          placeholder={{ blurhash: DEFAULT_BLURHASH }}
+          transition={150}
+        />
         {/* Left-to-right gradient fade for seamless background integration */}
         <LinearGradient
           colors={['#141418', 'rgba(20, 20, 24, 0.75)', 'rgba(20, 20, 24, 0.2)', 'transparent']}

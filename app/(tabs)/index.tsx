@@ -2,7 +2,6 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   Animated,
   Easing,
-  ImageBackground,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -28,6 +27,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Screen } from '@/components/common/Screen';
 import { ExactMedalIcon } from '@/components/common/ExactMedalIcon';
 import { DayCompleteScreen } from '@/components/features/missions/DayCompleteScreen';
+import { QuestListCard } from '@/components/features/missions/QuestListCard';
 import { LootDropModal } from '@/components/features/loot/LootDropModal';
 import { QuestActionModal } from '@/components/features/missions/QuestActionModal';
 import { TaskCompletedToast } from '@/components/features/missions/TaskCompletedToast';
@@ -183,105 +183,6 @@ function mapTaskToQuest(item: TaskItem, type: 'daily' | 'weekly'): QuestItem {
   };
 }
 
-function QuestHeaderImage({ quest }: { quest: QuestItem }) {
-  if (quest.image) {
-    return (
-      <ExpoImage
-        source={quest.image}
-        style={[styles.questImage, quest.imageStyle, styles.questImageBg]}
-        cachePolicy="memory-disk"
-        transition={200}
-        contentFit="cover"
-        recyclingKey={quest.id}
-      />
-    );
-  }
-  return (
-    <LinearGradient
-      colors={['#1F1F24', '#0E0E11']}
-      style={styles.questImagePlaceholder}
-    />
-  );
-}
-
-function AnimatedTickButton({ onPress }: { onPress: () => void }) {
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
-
-  const handlePress = (e: any) => {
-    e.stopPropagation();
-    onPress();
-
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.15,
-        duration: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1.0,
-        duration: 40,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  return (
-    <Pressable onPress={handlePress}>
-      <Animated.View
-        style={[
-          styles.creamSquareTickButton,
-          { transform: [{ scale: scaleAnim }] },
-        ]}
-      >
-        <Ionicons
-          name="checkmark"
-          size={16}
-          color="#262626"
-        />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
-function AnimatedWrongButton({ onPress }: { onPress: () => void }) {
-  const scaleAnim = React.useRef(new Animated.Value(1)).current;
-
-  const handlePress = (e: any) => {
-    e.stopPropagation();
-    onPress();
-
-    Animated.sequence([
-      Animated.timing(scaleAnim, {
-        toValue: 1.15,
-        duration: 40,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleAnim, {
-        toValue: 1.0,
-        duration: 40,
-        useNativeDriver: true,
-      }),
-    ]).start();
-  };
-
-  return (
-    <Pressable onPress={handlePress}>
-      <Animated.View
-        style={[
-          styles.redSquareWrongButton,
-          { transform: [{ scale: scaleAnim }] },
-        ]}
-      >
-        <Ionicons
-          name="close"
-          size={16}
-          color="#FFFFFF"
-        />
-      </Animated.View>
-    </Pressable>
-  );
-}
-
 export default function MissionsHomeScreen() {
   const { user } = useAuth();
   const { lastDrop, roll } = useLootDrop();
@@ -322,6 +223,14 @@ export default function MissionsHomeScreen() {
   }, [isFromAscension, blackFadeAnim]);
 
   const [quests, setQuests] = useState<QuestItem[]>([]);
+  // Mirrors `quests` synchronously so the handlers below can read the
+  // latest list without needing `quests` in their own dependency array —
+  // that's what lets them stay referentially stable across renders, which
+  // in turn is what lets <QuestListCard> below actually skip re-rendering
+  // via React.memo instead of every quest row re-rendering on every
+  // unrelated state change in this screen.
+  const questsRef = useRef(quests);
+  questsRef.current = quests;
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
@@ -341,18 +250,25 @@ export default function MissionsHomeScreen() {
   const [taskBottomSheetSubtitle, setTaskBottomSheetSubtitle] = useState<string | undefined>(undefined);
   const [taskBottomSheetXp, setTaskBottomSheetXp] = useState(10);
 
-  const loadTasks = useCallback(async () => {
+  // refreshUser defaults to false: useAuthStore.restoreSession() already
+  // fetches the user once at app boot, so re-fetching it here too on every
+  // plain mount would just duplicate that request. Callers that need fresh
+  // XP/streak/level after something actually changed it server-side (a
+  // manual pull-to-refresh, or after completeTask/reopenTask) pass true.
+  const loadTasks = useCallback(async (options?: { refreshUser?: boolean }) => {
     try {
       setError(null);
       const [tasksData, refreshedUser] = await Promise.all([
         fetchTasksToday(),
-        getCurrentUser(),
+        options?.refreshUser ? getCurrentUser() : Promise.resolve(null),
       ]);
       const mappedDaily = (tasksData.daily || []).map((item) => mapTaskToQuest(item, 'daily'));
       const mappedWeekly = (tasksData.weekly || []).map((item) => mapTaskToQuest(item, 'weekly'));
       const mapped = [...mappedDaily, ...mappedWeekly];
       setQuests(mapped);
-      useAuthStore.getState().setUser(refreshedUser);
+      if (refreshedUser) {
+        useAuthStore.getState().setUser(refreshedUser);
+      }
 
       // Warm the memory+disk cache for every quest image right away rather
       // than waiting for each card to mount. Fire-and-forget: a failed
@@ -373,7 +289,7 @@ export default function MissionsHomeScreen() {
 
   const onRefresh = useCallback(async () => {
     setRefreshing(true);
-    await loadTasks();
+    await loadTasks({ refreshUser: true });
     setRefreshing(false);
   }, [loadTasks]);
 
@@ -390,19 +306,6 @@ export default function MissionsHomeScreen() {
     (user?.week_status?.days
       ? user.week_status.days.filter((d) => d.status === 'DONE' || d.status === 'COMPLETED').length
       : user?.weeklyStreak ?? user?.user_progression?.weekly_streak ?? (displayStreak > 0 ? Math.min(displayStreak, 7) : 1));
-
-  const getQuestTargetValue = (quest: QuestItem) => {
-    if (quest.targetValue) {
-      return quest.targetValue;
-    }
-    if (quest.title === 'Protein Goal') {
-      const goal = user?.daily_protein_goal;
-      if (goal) {
-        return `${goal}g`;
-      }
-    }
-    return undefined;
-  };
 
   const dailyQuests = quests.filter((q) => q.type === 'daily');
   const weeklyQuests = quests.filter((q) => q.type === 'weekly');
@@ -467,10 +370,10 @@ export default function MissionsHomeScreen() {
     questId: string,
     actionStatus: 'COMPLETED' | 'PARTIAL' | 'SKIPPED' | 'PENDING'
   ) => {
-    const previousQuests = quests;
+    const previousQuests = questsRef.current;
     const mappedStatus = actionStatus === 'COMPLETED' ? 'done' : actionStatus === 'PARTIAL' ? 'partial' : actionStatus === 'SKIPPED' ? 'skipped' : 'todo';
-    
-    const targetQuest = quests.find(q => q.id === questId);
+
+    const targetQuest = previousQuests.find(q => q.id === questId);
     if (!targetQuest) return;
 
     let optimisticEarnedXp = 0;
@@ -501,7 +404,9 @@ export default function MissionsHomeScreen() {
       setToastXp(optimisticEarnedXp);
 
       // Check if this is the FIRST task completed of the day
-      const isFirstTaskOfToday = doneQuests.length === 0;
+      const isFirstTaskOfToday = previousQuests.filter(
+        (q) => q.status === 'done' || q.status === 'partial'
+      ).length === 0;
 
       if (isFirstTaskOfToday) {
         // Show celebration bottom sheet ONLY on the first task of the day
@@ -568,23 +473,29 @@ export default function MissionsHomeScreen() {
       setErrorToastSubtitle(message);
       setErrorToastVisible(true);
     }
-  }, [quests, user, loadTasks]);
+  }, [loadTasks]);
 
-  const handleOpenQuestActions = (quest: QuestItem) => {
+  // Takes a questId (not a full QuestItem) and stays referentially stable
+  // ([handleCompleteTask] never changes identity — see above) specifically
+  // so <QuestListCard>'s React.memo isn't defeated by a new function prop
+  // on every render.
+  const handleOpenQuestActions = useCallback((questId: string) => {
+    const quest = questsRef.current.find((q) => q.id === questId);
+    if (!quest) return;
     if (quest.allows_partial) {
       setSelectedQuest(quest);
       setActionModalVisible(true);
     } else {
       handleCompleteTask(quest.id, 'COMPLETED');
     }
-  };
+  }, [handleCompleteTask]);
 
-  const handleDirectSkip = (questId: string) => {
+  const handleDirectSkip = useCallback((questId: string) => {
     handleCompleteTask(questId, 'SKIPPED');
-  };
+  }, [handleCompleteTask]);
 
   const handleResetQuest = useCallback(async (questId: string) => {
-    const previousQuests = quests;
+    const previousQuests = questsRef.current;
     setQuests((prev) =>
       prev.map((q) =>
         q.id === questId ? { ...q, status: 'todo', earnedXp: undefined } : q
@@ -614,7 +525,7 @@ export default function MissionsHomeScreen() {
       setErrorToastSubtitle(message);
       setErrorToastVisible(true);
     }
-  }, [quests, loadTasks]);
+  }, [loadTasks]);
 
   return (
     <Screen style={styles.screen}>
@@ -678,7 +589,6 @@ export default function MissionsHomeScreen() {
           completedDaysCount={completedDays}
           avatarUrl={user?.avatarUrl}
           avatarId={(user as any)?.avatar_id}
-          userBadges={user?.badges}
         />
 
         {/* FILTER TABS ROW */}
@@ -793,7 +703,7 @@ export default function MissionsHomeScreen() {
             <Ionicons name="alert-circle-outline" size={56} color="#FF4D6D" />
             <Text style={styles.emptyStateTitle}>Error Loading Tasks</Text>
             <Text style={styles.emptyStateSubtext}>{error}</Text>
-            <TouchableOpacity style={styles.retryButton} onPress={loadTasks}>
+            <TouchableOpacity style={styles.retryButton} onPress={() => loadTasks()}>
               <Text style={styles.retryButtonText}>RETRY</Text>
             </TouchableOpacity>
           </View>
@@ -844,46 +754,15 @@ export default function MissionsHomeScreen() {
                       <>
                         <Text style={styles.sectionMonoLabel}>DAILY QUESTS</Text>
                         {dailyTodoQuests.map((quest) => (
-                          <View key={quest.id} style={styles.questCard}>
-                            <View style={styles.questImageWrapper}>
-                              <QuestHeaderImage quest={quest} />
-
-                              <View style={styles.topRightActionsCol}>
-                                <View style={styles.xpBadgeInline}>
-                                  <Text style={styles.xpBadgeText}>+{quest.xpReward} XP</Text>
-                                </View>
-
-                                {quest.showTickButton !== false && (
-                                  <AnimatedTickButton onPress={() => handleOpenQuestActions(quest)} />
-                                )}
-
-                                {quest.showWrongButton !== false && (
-                                  <AnimatedWrongButton onPress={() => handleDirectSkip(quest.id)} />
-                                )}
-                              </View>
-                            </View>
-
-                            <View style={styles.questBody}>
-                              <View style={styles.questTitleCol}>
-                                <View style={styles.categoryRow}>
-                                  <View style={styles.categoryPill}>
-                                    <Text style={styles.categoryPillText}>{quest.category}</Text>
-                                  </View>
-                                  <View style={styles.routineBadgeInline}>
-                                    <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                    <Text style={styles.routineBadgeText}>Routine</Text>
-                                  </View>
-                                </View>
-                                <Text style={styles.questTitle}>{quest.title}</Text>
-                              </View>
-
-                              {getQuestTargetValue(quest) && (
-                                <View style={styles.targetValueBox}>
-                                  <Text style={styles.targetValueText}>{getQuestTargetValue(quest)}</Text>
-                                </View>
-                              )}
-                            </View>
-                          </View>
+                          <QuestListCard
+                            key={quest.id}
+                            quest={quest}
+                            variant="todo"
+                            proteinGoal={user?.daily_protein_goal}
+                            onComplete={handleOpenQuestActions}
+                            onSkip={handleDirectSkip}
+                            onReset={handleResetQuest}
+                          />
                         ))}
                       </>
                     ) : null}
@@ -893,46 +772,15 @@ export default function MissionsHomeScreen() {
                   <>
                     <Text style={[styles.sectionMonoLabel, { marginTop: 24 }]}>WEEKLY QUESTS</Text>
                     {weeklyTodoQuests.map((quest) => (
-                      <View key={quest.id} style={styles.questCard}>
-                        <View style={styles.questImageWrapper}>
-                          <QuestHeaderImage quest={quest} />
-
-                          <View style={styles.topRightActionsCol}>
-                            <View style={styles.xpBadgeInline}>
-                              <Text style={styles.xpBadgeText}>+{quest.xpReward} XP</Text>
-                            </View>
-
-                            {quest.showTickButton !== false && (
-                              <AnimatedTickButton onPress={() => handleOpenQuestActions(quest)} />
-                            )}
-
-                            {quest.showWrongButton !== false && (
-                              <AnimatedWrongButton onPress={() => handleDirectSkip(quest.id)} />
-                            )}
-                          </View>
-                        </View>
-
-                        <View style={styles.questBody}>
-                          <View style={styles.questTitleCol}>
-                            <View style={styles.categoryRow}>
-                              <View style={styles.categoryPill}>
-                                <Text style={styles.categoryPillText}>{quest.category}</Text>
-                              </View>
-                              <View style={styles.routineBadgeInline}>
-                                <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                <Text style={styles.routineBadgeText}>Weekly</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.questTitle}>{quest.title}</Text>
-                          </View>
-
-                          {getQuestTargetValue(quest) && (
-                            <View style={styles.targetValueBox}>
-                              <Text style={styles.targetValueText}>{getQuestTargetValue(quest)}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
+                      <QuestListCard
+                        key={quest.id}
+                        quest={quest}
+                        variant="todo"
+                        proteinGoal={user?.daily_protein_goal}
+                        onComplete={handleOpenQuestActions}
+                        onSkip={handleDirectSkip}
+                        onReset={handleResetQuest}
+                      />
                     ))}
                   </>
                 )}
@@ -959,38 +807,15 @@ export default function MissionsHomeScreen() {
                   <>
                     <Text style={styles.sectionMonoLabel}>DAILY QUESTS</Text>
                     {dailyDoneQuests.map((quest) => (
-                      <View key={quest.id} style={styles.questCard}>
-                        <View style={styles.questImageWrapper}>
-                          <QuestHeaderImage quest={quest} />
-
-                          <View style={styles.topRightActionsCol}>
-                            <View style={styles.xpBadgeInline}>
-                              <Text style={styles.xpBadgeText}>+{quest.xpReward} XP</Text>
-                            </View>
-                          </View>
-                        </View>
-
-                        <View style={styles.questBody}>
-                          <View style={styles.questTitleCol}>
-                            <View style={styles.categoryRow}>
-                              <View style={styles.categoryPill}>
-                                <Text style={styles.categoryPillText}>{quest.category}</Text>
-                              </View>
-                              <View style={styles.routineBadgeInline}>
-                                <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                <Text style={styles.routineBadgeText}>Routine</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.questTitle}>{quest.title}</Text>
-                          </View>
-
-                          {getQuestTargetValue(quest) && (
-                            <View style={styles.targetValueBox}>
-                              <Text style={styles.targetValueText}>{getQuestTargetValue(quest)}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
+                      <QuestListCard
+                        key={quest.id}
+                        quest={quest}
+                        variant="done"
+                        proteinGoal={user?.daily_protein_goal}
+                        onComplete={handleOpenQuestActions}
+                        onSkip={handleDirectSkip}
+                        onReset={handleResetQuest}
+                      />
                     ))}
                   </>
                 )}
@@ -1000,38 +825,15 @@ export default function MissionsHomeScreen() {
                   <>
                     <Text style={[styles.sectionMonoLabel, { marginTop: dailyDoneQuests.length > 0 ? 24 : 0 }]}>WEEKLY QUESTS</Text>
                     {weeklyDoneQuests.map((quest) => (
-                      <View key={quest.id} style={styles.questCard}>
-                        <View style={styles.questImageWrapper}>
-                          <QuestHeaderImage quest={quest} />
-
-                          <View style={styles.topRightActionsCol}>
-                            <View style={styles.xpBadgeInline}>
-                              <Text style={styles.xpBadgeText}>+{quest.xpReward} XP</Text>
-                            </View>
-                          </View>
-                        </View>
-
-                        <View style={styles.questBody}>
-                          <View style={styles.questTitleCol}>
-                            <View style={styles.categoryRow}>
-                              <View style={styles.categoryPill}>
-                                <Text style={styles.categoryPillText}>{quest.category}</Text>
-                              </View>
-                              <View style={styles.routineBadgeInline}>
-                                <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                <Text style={styles.routineBadgeText}>Weekly</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.questTitle}>{quest.title}</Text>
-                          </View>
-
-                          {getQuestTargetValue(quest) && (
-                            <View style={styles.targetValueBox}>
-                              <Text style={styles.targetValueText}>{getQuestTargetValue(quest)}</Text>
-                            </View>
-                          )}
-                        </View>
-                      </View>
+                      <QuestListCard
+                        key={quest.id}
+                        quest={quest}
+                        variant="done"
+                        proteinGoal={user?.daily_protein_goal}
+                        onComplete={handleOpenQuestActions}
+                        onSkip={handleDirectSkip}
+                        onReset={handleResetQuest}
+                      />
                     ))}
                   </>
                 )}
@@ -1058,39 +860,15 @@ export default function MissionsHomeScreen() {
                   <>
                     <Text style={styles.sectionMonoLabel}>DAILY QUESTS</Text>
                     {dailySkippedQuests.map((quest) => (
-                      <View key={quest.id} style={[styles.questCard, { opacity: 0.55 }]}>
-                        <View style={styles.questImageWrapper}>
-                          <QuestHeaderImage quest={quest} />
-
-                          <View style={[styles.xpBadgeTopRight, styles.skippedBadgeContainer]}>
-                            <Ionicons name="play-skip-forward" size={14} color="#A1A1AA" />
-                            <Text style={[styles.xpBadgeText, { color: '#A1A1AA' }]}>SKIPPED</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.questBody}>
-                          <View style={styles.questTitleCol}>
-                            <View style={styles.categoryRow}>
-                              <View style={styles.categoryPill}>
-                                <Text style={styles.categoryPillText}>{quest.category}</Text>
-                              </View>
-                              <View style={styles.routineBadgeInline}>
-                                <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                <Text style={styles.routineBadgeText}>Routine</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.questTitle}>{quest.title}</Text>
-                          </View>
-
-                          <TouchableOpacity
-                            style={styles.undoButton}
-                            onPress={() => handleResetQuest(quest.id)}
-                          >
-                            <Ionicons name="refresh-outline" size={16} color="#A1A1AA" />
-                            <Text style={styles.undoButtonText}>Reset</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      <QuestListCard
+                        key={quest.id}
+                        quest={quest}
+                        variant="skipped"
+                        proteinGoal={user?.daily_protein_goal}
+                        onComplete={handleOpenQuestActions}
+                        onSkip={handleDirectSkip}
+                        onReset={handleResetQuest}
+                      />
                     ))}
                   </>
                 )}
@@ -1100,39 +878,15 @@ export default function MissionsHomeScreen() {
                   <>
                     <Text style={[styles.sectionMonoLabel, { marginTop: dailySkippedQuests.length > 0 ? 24 : 0 }]}>WEEKLY QUESTS</Text>
                     {weeklySkippedQuests.map((quest) => (
-                      <View key={quest.id} style={[styles.questCard, { opacity: 0.55 }]}>
-                        <View style={styles.questImageWrapper}>
-                          <QuestHeaderImage quest={quest} />
-
-                          <View style={[styles.xpBadgeTopRight, styles.skippedBadgeContainer]}>
-                            <Ionicons name="play-skip-forward" size={14} color="#A1A1AA" />
-                            <Text style={[styles.xpBadgeText, { color: '#A1A1AA' }]}>SKIPPED</Text>
-                          </View>
-                        </View>
-
-                        <View style={styles.questBody}>
-                          <View style={styles.questTitleCol}>
-                            <View style={styles.categoryRow}>
-                              <View style={styles.categoryPill}>
-                                <Text style={styles.categoryPillText}>{quest.category}</Text>
-                              </View>
-                              <View style={styles.routineBadgeInline}>
-                                <Ionicons name="repeat-outline" size={12} color="#A1A1AA" />
-                                <Text style={styles.routineBadgeText}>Weekly</Text>
-                              </View>
-                            </View>
-                            <Text style={styles.questTitle}>{quest.title}</Text>
-                          </View>
-
-                          <TouchableOpacity
-                            style={styles.undoButton}
-                            onPress={() => handleResetQuest(quest.id)}
-                          >
-                            <Ionicons name="refresh-outline" size={16} color="#A1A1AA" />
-                            <Text style={styles.undoButtonText}>Reset</Text>
-                          </TouchableOpacity>
-                        </View>
-                      </View>
+                      <QuestListCard
+                        key={quest.id}
+                        quest={quest}
+                        variant="skipped"
+                        proteinGoal={user?.daily_protein_goal}
+                        onComplete={handleOpenQuestActions}
+                        onSkip={handleDirectSkip}
+                        onReset={handleResetQuest}
+                      />
                     ))}
                   </>
                 )}
@@ -1585,140 +1339,17 @@ const styles = StyleSheet.create({
     fontFamily: fontFamilies.regular,
     fontSize: 12,
     color: '#71717A',
-  }, questCard: {
-    borderRadius: 16,
-    borderWidth: 1,
-    borderColor: '#27272A',
-    overflow: 'hidden',
-    marginBottom: 16,
-    backgroundColor: '#0E0E11',
   },
-  questImageWrapper: {
-    height: 115,
-    position: 'relative',
-  },
-  questImage: {
-    width: '100%',
-    height: '100%',
-    resizeMode: 'cover',
-  },
-  // Solid ground shown behind the image while it loads/decodes, so the
-  // card never flashes empty/transparent before the fade-in transition.
-  questImageBg: {
-    backgroundColor: '#1A1A1F',
-  },
-  questImagePlaceholder: {
-    width: '100%',
-    height: '100%',
-  },
-  topRightActionsCol: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    alignItems: 'flex-end',
-    gap: 6,
-  },
-  xpBadgeInline: {
-    backgroundColor: 'rgba(0, 0, 0, 0.75)',
-    paddingHorizontal: 10,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.12)',
-  },
-  creamSquareTickButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    backgroundColor: '#E5D7C5',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  redSquareWrongButton: {
-    width: 30,
-    height: 30,
-    borderRadius: 6,
-    backgroundColor: '#DC2626',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
+  // Card-level quest styles (questCard, questImage*, xpBadge*, category*,
+  // targetValue*, tick/wrong buttons, ...) moved to QuestListCard.tsx along
+  // with the JSX that used them.
   creamSquareTickButtonChecked: {
     backgroundColor: '#22C55E',
-  },
-  xpBadgeText: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 13,
-    color: '#FFFFFF',
-  },
-  questBody: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'flex-end',
-    justifyContent: 'space-between',
-    backgroundColor: '#0E0E11',
-  },
-  questTitleCol: {
-    flex: 1,
-    paddingRight: 12,
-  },
-  categoryRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 8,
-    marginBottom: 6,
-  },
-  routineBadgeInline: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 4,
-  },
-  routineBadgeText: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 10,
-    color: '#A1A1AA',
-    letterSpacing: 0.5,
-  },
-  categoryPill: {
-    alignSelf: 'flex-start',
-    backgroundColor: '#1C1C1E',
-    paddingHorizontal: 8,
-    paddingVertical: 3,
-    borderRadius: 4,
-    borderWidth: 1,
-    borderColor: '#2C2C2E',
-  },
-  categoryPillText: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 10,
-    color: '#A1A1AA',
-    letterSpacing: 0.8,
   },
   categoryPillDivider: {
     fontFamily: fontFamilies.regular,
     fontSize: 11,
     color: '#52525B',
-  },
-  questTitle: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 20,
-    color: '#FFFFFF',
-    letterSpacing: 0.2,
-  },
-  targetValueBox: {
-    backgroundColor: '#18181B',
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#27272A',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  targetValueText: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 14,
-    color: '#FFFFFF',
   },
   questActionsRow: {
     flexDirection: 'row',
@@ -1838,15 +1469,6 @@ const styles = StyleSheet.create({
   },
 
   /* Badges & Reset Actions */
-  xpBadgeTopRight: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    borderWidth: 1,
-  },
   doneBadgeContainer: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -1860,29 +1482,6 @@ const styles = StyleSheet.create({
     gap: 6,
     backgroundColor: 'rgba(245, 158, 11, 0.15)',
     borderColor: 'rgba(245, 158, 11, 0.4)',
-  },
-  skippedBadgeContainer: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#27272A',
-    borderColor: '#3F3F46',
-  },
-  undoButton: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 6,
-    backgroundColor: '#18181B',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: '#27272A',
-  },
-  undoButtonText: {
-    fontFamily: fontFamilies.bold,
-    fontSize: 12,
-    color: '#A1A1AA',
   },
   loadingContainer: {
     paddingVertical: 80,

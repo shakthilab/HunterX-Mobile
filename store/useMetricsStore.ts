@@ -3,6 +3,7 @@ import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { healthService, getAdapterForProvider } from '@/services/health/healthService';
 import { healthMetricsService, BackendDailyMetricItem } from '@/services/api/healthMetrics.service';
+import { devLog, devWarn } from '@/services/health/devLog';
 
 const HEALTH_STORAGE_KEY = '@hunterx_health_sync_state';
 const LAST_SYNC_TIME_KEY = '@hunterx_last_health_sync_time';
@@ -46,6 +47,7 @@ export interface MetricsDataset {
 
 export interface MetricsState {
   timeRange: TimeRange;
+  availableRanges: TimeRange[];
   isHealthConnected: boolean;
   connectedProvider: 'apple_health' | 'health_connect' | null;
   lastSyncedText: string;
@@ -227,8 +229,24 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
       set({ isLoaded: true });
     });
 
+  // Persists a fresh "Last synced" text alongside the current connection
+  // state. Without this, lastSyncedText only ever lived in memory — the next
+  // app launch's initFromStorage() would overwrite it with whatever was last
+  // written at connect time, showing a stale sync time forever.
+  const persistLastSyncedText = async (lastSyncedText: string) => {
+    await AsyncStorage.setItem(
+      HEALTH_STORAGE_KEY,
+      JSON.stringify({
+        isHealthConnected: get().isHealthConnected,
+        connectedProvider: get().connectedProvider,
+        lastSyncedText,
+      })
+    ).catch(() => {});
+  };
+
   return {
     timeRange: 'Today',
+    availableRanges: ['Today'],
     isHealthConnected: false,
     connectedProvider: null,
     lastSyncedText: 'Not connected',
@@ -250,6 +268,13 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
       try {
         const json = await AsyncStorage.getItem(HEALTH_STORAGE_KEY);
         const { state, shouldClearStorage } = resolveStoredConnectionState(json);
+        devLog('====================================================');
+        devLog('💾 [useMetricsStore] Resolved stored connection state:');
+        devLog('   isHealthConnected:', state.isHealthConnected);
+        devLog('   connectedProvider:', state.connectedProvider);
+        devLog('   lastSyncedText:', state.lastSyncedText);
+        devLog('   shouldClearStorage:', shouldClearStorage);
+        devLog('====================================================');
         set({ ...state, isLoaded: true });
         if (shouldClearStorage) {
           await AsyncStorage.multiRemove([HEALTH_STORAGE_KEY, LAST_SYNC_TIME_KEY]).catch(() => {});
@@ -260,7 +285,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
     },
 
     connectProvider: async (provider: 'apple_health' | 'health_connect') => {
-      console.log('[useMetricsStore] connectProvider called for:', provider);
+      devLog('[useMetricsStore] connectProvider called for:', provider);
 
       if (provider === 'apple_health' && Platform.OS !== 'ios') {
         throw new Error('Apple Health (HealthKit) is only available on iOS devices.');
@@ -273,9 +298,9 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
       set({ isSyncing: true });
       try {
         const adapter = getAdapterForProvider(provider);
-        console.log('[useMetricsStore] Got adapter for provider:', adapter?.constructor?.name);
+        devLog('[useMetricsStore] Got adapter for provider:', adapter?.constructor?.name);
         const isAvail = await adapter.isAvailable();
-        console.log('[useMetricsStore] adapter.isAvailable() returned:', isAvail);
+        devLog('[useMetricsStore] adapter.isAvailable() returned:', isAvail);
         if (!isAvail) {
           set({ isSyncing: false });
           if (provider === 'apple_health') {
@@ -285,9 +310,9 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
           }
         }
 
-        console.log('[useMetricsStore] Requesting permissions via adapter...');
+        devLog('[useMetricsStore] Requesting permissions via adapter...');
         const granted = await adapter.requestPermissions();
-        console.log('[useMetricsStore] adapter.requestPermissions() returned:', granted);
+        devLog('[useMetricsStore] adapter.requestPermissions() returned:', granted);
         if (!granted) {
           set({ isSyncing: false });
           throw new Error('Permission denied or canceled by user.');
@@ -353,6 +378,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
 
     syncNow: async () => {
       if (!get().isHealthConnected) return;
+      if (!(await get().verifyProviderAccess())) return;
 
       set({ isSyncing: true });
       try {
@@ -371,6 +397,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
 
         set({ lastSyncedText, isSyncing: false });
         await AsyncStorage.setItem(LAST_SYNC_TIME_KEY, `${Date.now()}`);
+        await persistLastSyncedText(lastSyncedText);
         await get().fetchTodayLiveMetrics();
       } catch (e) {
         set({ isSyncing: false });
@@ -448,7 +475,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
           },
         }));
       } catch (e) {
-        console.warn('[useMetricsStore] fetchTodayLiveMetrics failed:', e);
+        devWarn('[useMetricsStore] fetchTodayLiveMetrics failed:', e);
       }
     },
 
@@ -487,8 +514,9 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
 
         set({ lastSyncedText, isSyncing: false });
         await AsyncStorage.setItem(LAST_SYNC_TIME_KEY, `${nowMs}`);
+        await persistLastSyncedText(lastSyncedText);
       } catch (e) {
-        console.warn('[useMetricsStore] syncHealthMetricsIfNeeded failed silently:', e);
+        devWarn('[useMetricsStore] syncHealthMetricsIfNeeded failed silently:', e);
         set({ isSyncing: false });
       }
     },
@@ -646,7 +674,7 @@ export const useMetricsStore = create<MetricsState>((set, get) => {
           },
         }));
       } catch (e) {
-        console.warn(`[useMetricsStore] fetchRangeData(${range}) failed:`, e);
+        devWarn(`[useMetricsStore] fetchRangeData(${range}) failed:`, e);
         set({ isLoadingRangeData: false });
       }
     },

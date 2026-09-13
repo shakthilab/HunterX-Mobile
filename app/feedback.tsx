@@ -3,7 +3,6 @@ import {
   ActivityIndicator,
   Animated,
   BackHandler,
-  Image,
   Keyboard,
   KeyboardAvoidingView,
   Platform,
@@ -14,6 +13,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { router, useFocusEffect } from 'expo-router';
 import { Feather, Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -500,7 +500,7 @@ export default function FeedbackScreen() {
                 {screenshotUri ? (
                   /* Attached Preview Card */
                   <View style={styles.attachedFileCard}>
-                    <Image source={{ uri: screenshotUri }} style={styles.thumbnail} />
+                    <Image source={{ uri: screenshotUri }} style={styles.thumbnail} contentFit="cover" />
                     <View style={styles.attachedInfo}>
                       <Text style={styles.attachedTitle} numberOfLines={1}>
                         Screenshot Attached

@@ -5,16 +5,7 @@
 
 export const CLOUDINARY_ASSETS: Record<string, { uri: string }> = {
   active_campaign_bg: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861185/hunterx/app-assets/active_campaign_bg.jpg' },
-  badge_cursed_bound: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861202/hunterx/app-assets/badge_cursed_bound.jpg' },
-  badge_dragon_soul: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861203/hunterx/app-assets/badge_dragon_soul.jpg' },
-  badge_phoenix_heart: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861204/hunterx/app-assets/badge_phoenix_heart.jpg' },
-  badge_solo_monarch: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861205/hunterx/app-assets/badge_solo_monarch.jpg' },
-  badge_speed_strike: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861207/hunterx/app-assets/badge_speed_strike.jpg' },
-  badge_stealth_shadow: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861209/hunterx/app-assets/badge_stealth_shadow.jpg' },
-  badge_streak_guardian: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861210/hunterx/app-assets/badge_streak_guardian.jpg' },
-  badge_titan_force: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861212/hunterx/app-assets/badge_titan_force.jpg' },
-  badge_vanguard_shield: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861213/hunterx/app-assets/badge_vanguard_shield.jpg' },
-  badge_viper_strike: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861214/hunterx/app-assets/badge_viper_strike.jpg' },
+
   high_fidelity: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861220/hunterx/app-assets/high_fidelity.png' },
   login_bg: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861223/hunterx/app-assets/login_bg.png' },
   lost_access_bg: { uri: 'https://res.cloudinary.com/sc8zzixt/image/upload/f_auto,q_auto/v1787861226/hunterx/app-assets/lost_access_bg.png' },

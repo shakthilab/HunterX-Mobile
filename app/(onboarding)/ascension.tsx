@@ -3,13 +3,13 @@ import { router } from 'expo-router';
 import {
   Animated,
   Easing,
-  ImageBackground,
   Platform,
   Pressable,
   StyleSheet,
   Text,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 
@@ -19,8 +19,16 @@ import { Screen } from '@/components/common/Screen';
 import { fontFamilies } from '@/theme/typography';
 import { useAuth } from '@/hooks/useAuth';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl, DEFAULT_BLURHASH } from '@/services/media/cloudinary';
 import { playIntroAudio, preloadIntroAudio } from '@/services/audio/introSound';
 import * as Haptics from 'expo-haptics';
+
+// This is the first screen every new user lands on right after onboarding —
+// same reasoning as login.tsx's hero image: width-cap the Cloudinary
+// delivery so it's a fraction of the original's bytes, and let expo-image's
+// blurhash placeholder + disk cache mean it's never a blank flash again
+// after the first load.
+const HERO_IMAGE_URI = optimizeCloudinaryUrl(CLOUDINARY_ASSETS.screen.uri, 1200);
 
 export default function AscensionScreen() {
   const { completeOnboarding } = useAuth();
@@ -58,11 +66,16 @@ export default function AscensionScreen() {
       <View style={styles.container}>
         {/* Top Hero Image Banner */}
         <View style={styles.heroWrapper}>
-          <ImageBackground
-            source={CLOUDINARY_ASSETS.screen}
-            style={styles.heroImage}
-            resizeMode="cover"
-          >
+          <View style={styles.heroImage}>
+            <ExpoImage
+              source={{ uri: HERO_IMAGE_URI }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder={{ blurhash: DEFAULT_BLURHASH }}
+              transition={200}
+            />
+
             <DustParticles count={20} />
 
             {/* Top subtle dark glow */}
@@ -77,7 +90,7 @@ export default function AscensionScreen() {
               locations={[0, 0.45, 0.8, 1.0]}
               style={styles.bottomGradient}
             />
-          </ImageBackground>
+          </View>
         </View>
 
         {/* Content Section */}

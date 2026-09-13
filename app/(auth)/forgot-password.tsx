@@ -4,7 +4,6 @@ import { Link, router } from 'expo-router';
 import {
   Animated,
   Easing,
-  Image,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -14,6 +13,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather } from '@expo/vector-icons';
 
@@ -23,6 +23,7 @@ import { colors } from '@/theme/colors';
 import { fontFamilies } from '@/theme/typography';
 import { forgotPassword } from '@/services/api/auth.service';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl, DEFAULT_BLURHASH } from '@/services/media/cloudinary';
 
 const HERO_ASPECT_RATIO = 1264 / 848; // image height / image width
 const HERO_TOP_OFFSET = 55;
@@ -44,10 +45,6 @@ export default function ForgotPasswordScreen() {
   const headerAnim = useRef(new Animated.Value(0)).current;
   const formAnim = useRef(new Animated.Value(0)).current;
 
-  // Pulsing glow animation for the white orb/dot in the hero image
-  const pulseGlow = useRef(new Animated.Value(0.4)).current;
-  const pulseScale = useRef(new Animated.Value(0.9)).current;
-
   useEffect(() => {
     // Entrance animations
     Animated.stagger(140, [
@@ -55,56 +52,16 @@ export default function ForgotPasswordScreen() {
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
       Animated.timing(formAnim, {
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
     ]).start();
-
-    // Continuous orb pulsing animation
-    const glowAnimation = Animated.loop(
-      Animated.parallel([
-        Animated.sequence([
-          Animated.timing(pulseGlow, {
-            toValue: 1,
-            duration: 1600,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-          Animated.timing(pulseGlow, {
-            toValue: 0.35,
-            duration: 1600,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-        ]),
-        Animated.sequence([
-          Animated.timing(pulseScale, {
-            toValue: 1.35,
-            duration: 1600,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-          Animated.timing(pulseScale, {
-            toValue: 0.9,
-            duration: 1600,
-            easing: Easing.inOut(Easing.quad),
-            useNativeDriver: false,
-          }),
-        ]),
-      ])
-    );
-
-    glowAnimation.start();
-
-    return () => {
-      glowAnimation.stop();
-    };
-  }, [headerAnim, formAnim, pulseGlow, pulseScale]);
+  }, [headerAnim, formAnim]);
 
   const createAnimatedStyle = (animVal: Animated.Value) => ({
     opacity: animVal,
@@ -144,8 +101,12 @@ export default function ForgotPasswordScreen() {
       {/* Background Image Container */}
       <View style={styles.heroBackground}>
         <Image
-          source={CLOUDINARY_ASSETS.lost_access_bg}
+          source={{ uri: optimizeCloudinaryUrl(CLOUDINARY_ASSETS.lost_access_bg.uri, 1200) }}
           style={styles.heroImage}
+          contentFit="cover"
+          cachePolicy="memory-disk"
+          placeholder={{ blurhash: DEFAULT_BLURHASH }}
+          transition={200}
         />
 
         {/* Flat dark overlay for text readability */}

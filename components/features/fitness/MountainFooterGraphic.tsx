@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Image, Dimensions } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const METRIX_HOME_IMG = require('@/assets/images/metrixhome.jpg');
@@ -32,7 +33,7 @@ export function MountainFooterGraphic({
             top: IMAGE_OFFSET_TOP,
           },
         ]}
-        resizeMode="cover"
+        contentFit="cover"
       />
 
       {/* Soft edge blend at the top to seamlessly merge with the black background */}

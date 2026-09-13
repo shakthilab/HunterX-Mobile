@@ -3,7 +3,6 @@ import {
   Alert,
   Animated,
   Clipboard,
-  Image,
   Modal,
   ScrollView,
   Share,
@@ -12,6 +11,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image } from 'expo-image';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import ViewShot from '@/components/common/ViewShotCompat';
@@ -19,6 +19,7 @@ import type { ViewShotHandle } from '@/types/viewShot';
 import RNShare from '@/services/share/RNShare';
 import { Screen } from '@/components/common/Screen';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl, DEFAULT_BLURHASH } from '@/services/media/cloudinary';
 import { fontFamilies } from '@/theme/typography';
 
 export interface InviteFriendsModalProps {
@@ -180,9 +181,12 @@ export function InviteFriendsModal({
             >
               <View style={styles.guestPassCardWrapper}>
                 <Image
-                  source={CLOUDINARY_ASSETS.refer_bg}
+                  source={{ uri: optimizeCloudinaryUrl(CLOUDINARY_ASSETS.refer_bg.uri) }}
                   style={styles.guestPassAnimeArtBg}
-                  resizeMode="cover"
+                  contentFit="cover"
+                  cachePolicy="memory-disk"
+                  placeholder={{ blurhash: DEFAULT_BLURHASH }}
+                  transition={150}
                 />
 
                 {/* Scanning Line Animation Layer */}

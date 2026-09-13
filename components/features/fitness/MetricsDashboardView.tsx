@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import {
   StyleSheet,
   Text,
@@ -7,9 +7,11 @@ import {
   TouchableOpacity,
   Alert,
 } from 'react-native';
+import { useFocusEffect } from 'expo-router';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 
 import { fontFamilies } from '@/theme/typography';
 import { useMetricsStore } from '@/store/useMetricsStore';
@@ -32,11 +34,55 @@ export function MetricsDashboardView({
   const insets = useSafeAreaInsets();
   const {
     timeRange,
+    availableRanges,
     setTimeRange,
     datasets,
+    connectedProvider,
     disconnectProvider,
+    fetchRangeData,
     syncNow,
-  } = useMetricsStore();
+  } = useMetricsStore(
+    useShallow((state) => ({
+      timeRange: state.timeRange,
+      availableRanges: state.availableRanges,
+      setTimeRange: state.setTimeRange,
+      datasets: state.datasets,
+      connectedProvider: state.connectedProvider,
+      disconnectProvider: state.disconnectProvider,
+      fetchRangeData: state.fetchRangeData,
+      syncNow: state.syncNow,
+    }))
+  );
+
+  // Always reflects the latest selected range for the listeners below,
+  // without needing to resubscribe them every time it changes.
+  const timeRangeRef = useRef(timeRange);
+  useEffect(() => {
+    timeRangeRef.current = timeRange;
+  }, [timeRange]);
+
+  // Refresh whenever this screen gains focus — including the very first
+  // mount — so switching back from another tab always shows the latest
+  // health data instead of whatever was last fetched. This is a real sync
+  // (not the throttled hourly one in app/_layout.tsx's foreground listener),
+  // since routing into this screen is the moment the user actually expects
+  // "Last synced" to reflect right now, not up to an hour ago.
+  useFocusEffect(
+    useCallback(() => {
+      console.log('====================================================');
+      console.log(`📊 [MetricsDashboardView] Focused for provider: ${connectedProvider} — syncing + refreshing ${timeRangeRef.current}`);
+      console.log('====================================================');
+      syncNow().then(() => {
+        if (timeRangeRef.current !== 'Today') {
+          fetchRangeData(timeRangeRef.current);
+        }
+      });
+    }, [connectedProvider, syncNow, fetchRangeData])
+  );
+
+  // App-foreground refresh (leave HunterX, walk around, reopen) is handled
+  // globally in app/_layout.tsx so it fires even if this screen was never
+  // mounted yet this session — no need to duplicate an AppState listener here.
 
   const currentData = datasets[timeRange] || datasets.Today;
 
@@ -123,7 +169,11 @@ export function MetricsDashboardView({
         <HealthConnectionBanner onPress={handleBannerPress} />
 
         {/* Time Range Filter (Today, Week, Month, Year) */}
-        <TimeRangeSelector selected={timeRange} onSelect={setTimeRange} />
+        <TimeRangeSelector
+          selected={timeRange}
+          onSelect={setTimeRange}
+          availableRanges={availableRanges}
+        />
 
         {/* Steps Hero Card */}
         <StepsHeroCard

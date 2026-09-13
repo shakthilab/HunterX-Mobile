@@ -3,7 +3,6 @@ import { Link, router } from 'expo-router';
 import {
   Animated,
   Easing,
-  ImageBackground,
   KeyboardAvoidingView,
   Platform,
   Pressable,
@@ -13,6 +12,7 @@ import {
   TextInput,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Feather, Ionicons } from '@expo/vector-icons';
 
@@ -25,6 +25,15 @@ import { isGoogleSignInCancelled, signInWithGoogle } from '@/services/auth/googl
 import { colors } from '@/theme/colors';
 import { fontFamilies } from '@/theme/typography';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl, DEFAULT_BLURHASH } from '@/services/media/cloudinary';
+
+// This hero image is the very first thing a logged-out user ever sees, often
+// before app-wide prefetching (see preloadAppAssets) has had a chance to
+// finish — so it can't rely on that alone. Width-capping the Cloudinary
+// delivery cuts it to a fraction of the original's bytes, and expo-image's
+// blurhash placeholder + disk cache mean it's never a blank flash again
+// after the first load.
+const HERO_IMAGE_URI = optimizeCloudinaryUrl(CLOUDINARY_ASSETS.login_bg.uri, 1200);
 
 export default function LoginScreen() {
   const { login, loginWithGoogle, isAuthenticating } = useAuth();
@@ -141,11 +150,16 @@ export default function LoginScreen() {
           bounces={false}
         >
           {/* Hero Banner Header */}
-          <ImageBackground
-            source={CLOUDINARY_ASSETS.login_bg}
-            style={styles.heroBackground}
-            resizeMode="cover"
-          >
+          <View style={styles.heroBackground}>
+            <ExpoImage
+              source={{ uri: HERO_IMAGE_URI }}
+              style={StyleSheet.absoluteFillObject}
+              contentFit="cover"
+              cachePolicy="memory-disk"
+              placeholder={{ blurhash: DEFAULT_BLURHASH }}
+              transition={200}
+            />
+
             <DustParticles count={25} />
 
             <LinearGradient
@@ -158,7 +172,7 @@ export default function LoginScreen() {
               <Text style={styles.title}>HUNTERX</Text>
               <Text style={styles.subtitle}>T H E   S Y S T E M   H A S   C H O S E N   Y O U</Text>
             </Animated.View>
-          </ImageBackground>
+          </View>
 
           {/* Form Content */}
           <View style={styles.formContainer}>

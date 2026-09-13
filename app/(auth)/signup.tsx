@@ -73,13 +73,13 @@ export default function SignupScreen() {
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
       Animated.timing(formAnim, {
         toValue: 1,
         duration: 850,
         easing: Easing.out(Easing.cubic),
-        useNativeDriver: false,
+        useNativeDriver: true,
       }),
     ]).start();
   }, [titleAnim, formAnim]);

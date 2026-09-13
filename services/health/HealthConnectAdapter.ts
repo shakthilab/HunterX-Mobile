@@ -1,5 +1,6 @@
 import { Platform } from 'react-native';
 import type { HealthAdapter, DailyHealthSummary, DayBarSample } from './HealthAdapter';
+import { devLog, devWarn } from './devLog';
 
 let HealthConnect: any = null;
 
@@ -8,7 +9,7 @@ try {
     HealthConnect = require('react-native-health-connect');
   }
 } catch (e) {
-  console.warn('[HealthConnectAdapter] Could not import react-native-health-connect:', e);
+  devWarn('[HealthConnectAdapter] Could not import react-native-health-connect:', e);
 }
 
 // Shared with checkPermissions() below so the "did we get everything we asked
@@ -26,53 +27,83 @@ export class HealthConnectAdapter implements HealthAdapter {
   private isInitialized = false;
 
   async isAvailable(): Promise<boolean> {
-    console.log('[HealthConnectAdapter] Checking availability... Platform:', Platform.OS, 'HealthConnect module loaded:', !!HealthConnect);
+    devLog('====================================================');
+    devLog('🔍 [HealthConnectAdapter] Checking Availability & SDK Status');
+    devLog('   Platform OS:', Platform.OS);
+    devLog('   Health Connect module imported:', !!HealthConnect);
+
     if (Platform.OS !== 'android') {
-      console.log('[HealthConnectAdapter] isAvailable: false (Not Android)');
+      devLog('   ❌ Result: Not Android (isAvailable: false)');
+      devLog('====================================================');
       return false;
     }
     if (!HealthConnect) {
-      console.error('[HealthConnectAdapter] isAvailable: false (react-native-health-connect module failed to load/import)');
+      console.error('   ❌ Result: react-native-health-connect module failed to load/import');
+      devLog('====================================================');
       return false;
     }
     try {
       const status = await HealthConnect.getSdkStatus();
-      console.log('[HealthConnectAdapter] HealthConnect.getSdkStatus() returned status:', status);
-      const isAvailable = status === HealthConnect.SdkAvailabilityStatus.SDK_AVAILABLE;
-      console.log('[HealthConnectAdapter] isAvailable:', isAvailable);
+      let statusDesc = 'UNKNOWN';
+      if (HealthConnect.SdkAvailabilityStatus) {
+        if (status === HealthConnect.SdkAvailabilityStatus.SDK_AVAILABLE) {
+          statusDesc = 'SDK_AVAILABLE (1) - Installed & Ready';
+        } else if (status === HealthConnect.SdkAvailabilityStatus.SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED) {
+          statusDesc = 'SDK_UNAVAILABLE_PROVIDER_UPDATE_REQUIRED (2) - App install/update needed from Play Store';
+        } else if (status === HealthConnect.SdkAvailabilityStatus.SDK_UNAVAILABLE) {
+          statusDesc = 'SDK_UNAVAILABLE (3) - Not supported on this device/OS';
+        }
+      }
+      devLog('   SDK Status Code:', status, `(${statusDesc})`);
+
+      const isAvailable = status === HealthConnect.SdkAvailabilityStatus?.SDK_AVAILABLE;
+      devLog(`   ${isAvailable ? '✅' : '❌'} Result: isAvailable = ${isAvailable}`);
+      devLog('====================================================');
       return isAvailable;
     } catch (e: any) {
-      console.error('[HealthConnectAdapter] isAvailable error:', e?.message || e, e);
+      console.error('   ❌ Exception during getSdkStatus:', e?.message || e, e);
+      devLog('====================================================');
       return false;
     }
   }
 
   async requestPermissions(): Promise<boolean> {
-    console.log('[HealthConnectAdapter] Requesting permissions...');
+    devLog('====================================================');
+    devLog('🔑 [HealthConnectAdapter] Requesting Health Connect Permissions');
     if (Platform.OS !== 'android' || !HealthConnect) {
-      console.error('[HealthConnectAdapter] requestPermissions failed: Not Android or HealthConnect module missing');
+      console.error('   ❌ Failed: Not Android or HealthConnect module missing');
+      devLog('====================================================');
       return false;
     }
     try {
-      console.log('[HealthConnectAdapter] Initializing HealthConnect...');
+      devLog('   Initializing HealthConnect SDK...');
       const isInit = await HealthConnect.initialize();
-      console.log('[HealthConnectAdapter] HealthConnect.initialize() result:', isInit);
+      devLog('   HealthConnect.initialize() result:', isInit);
       if (!isInit) {
-        console.error('[HealthConnectAdapter] HealthConnect.initialize() returned false');
+        console.error('   ❌ HealthConnect.initialize() returned false');
+        devLog('====================================================');
         return false;
       }
       this.isInitialized = true;
 
-      console.log('[HealthConnectAdapter] Requesting permissions for:', REQUIRED_PERMISSIONS);
+      devLog('   Requesting permissions for record types:');
+      REQUIRED_PERMISSIONS.forEach((p) => devLog(`      - [${p.accessType}] ${p.recordType}`));
+
       const res = await HealthConnect.requestPermission(REQUIRED_PERMISSIONS);
-      console.log('[HealthConnectAdapter] HealthConnect.requestPermission() response:', res);
+      devLog('   HealthConnect.requestPermission() raw response:', JSON.stringify(res));
+
       if (Array.isArray(res) && res.length === 0) {
-        console.warn('[HealthConnectAdapter] Permissions request returned empty array (user canceled or denied all)');
+        devWarn('   ⚠️ Permissions request returned empty array (user canceled or denied all)');
+        devLog('====================================================');
         return false;
       }
+
+      devLog('   ✅ Permissions granted successfully!');
+      devLog('====================================================');
       return true;
     } catch (e: any) {
-      console.error('[HealthConnectAdapter] requestPermissions exception:', e?.message || e, e);
+      console.error('   ❌ Exception during requestPermissions:', e?.message || e, e);
+      devLog('====================================================');
       return false;
     }
   }
@@ -82,31 +113,47 @@ export class HealthConnectAdapter implements HealthAdapter {
   // is what lets the store detect a revoked permission on Android and revert
   // to the connect banner instead of silently showing stale/zero data forever.
   async checkPermissions(): Promise<boolean> {
+    devLog('====================================================');
+    devLog('🛡️ [HealthConnectAdapter] Checking Granted Permissions...');
     if (Platform.OS !== 'android' || !HealthConnect) {
+      devLog('   Skipped: Not Android');
+      devLog('====================================================');
       return true;
     }
     try {
       const isInit = await HealthConnect.initialize();
       if (!isInit) {
+        devWarn('   ⚠️ HealthConnect.initialize() returned false during check');
+        devLog('====================================================');
         return false;
       }
       this.isInitialized = true;
 
       const granted: Array<{ accessType: string; recordType: string }> =
         await HealthConnect.getGrantedPermissions();
+      devLog('   Currently granted permissions count:', Array.isArray(granted) ? granted.length : 0);
+      if (Array.isArray(granted)) {
+        granted.forEach((g) => devLog(`      ✓ [${g.accessType}] ${g.recordType}`));
+      }
+
       if (!Array.isArray(granted)) {
+        devWarn('   ⚠️ getGrantedPermissions did not return array');
+        devLog('====================================================');
         return false;
       }
 
-      return REQUIRED_PERMISSIONS.every((required) =>
+      const allGranted = REQUIRED_PERMISSIONS.every((required) =>
         granted.some(
           (g) => g.accessType === required.accessType && g.recordType === required.recordType
         )
       );
-    } catch (e) {
-      console.warn('[HealthConnectAdapter] checkPermissions failed:', e);
-      // Fails open rather than bouncing the user to the connect banner over a
-      // transient error (Health Connect not running, momentary IPC failure).
+
+      devLog(`   ${allGranted ? '✅' : '⚠️'} All required permissions intact: ${allGranted}`);
+      devLog('====================================================');
+      return allGranted;
+    } catch (e: any) {
+      devWarn('   ⚠️ checkPermissions exception:', e?.message || e);
+      devLog('====================================================');
       return true;
     }
   }
@@ -145,7 +192,10 @@ export class HealthConnectAdapter implements HealthAdapter {
         if (stepRecords?.records) {
           steps = stepRecords.records.reduce((acc: number, curr: any) => acc + (curr.count || 0), 0);
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] Steps records count: ${stepRecords?.records?.length || 0}, Total Steps: ${steps}`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read Steps records:', e?.message || e);
+      }
 
       let calories = 0;
       try {
@@ -155,7 +205,10 @@ export class HealthConnectAdapter implements HealthAdapter {
             calorieRecords.records.reduce((acc: number, curr: any) => acc + (curr.energy?.inKilocalories || 0), 0)
           );
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] Calories records count: ${calorieRecords?.records?.length || 0}, Total Calories: ${calories} kcal`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read ActiveCaloriesBurned records:', e?.message || e);
+      }
 
       let distanceKm = 0;
       try {
@@ -164,7 +217,10 @@ export class HealthConnectAdapter implements HealthAdapter {
           const totalMeters = distRecords.records.reduce((acc: number, curr: any) => acc + (curr.distance?.inMeters || 0), 0);
           distanceKm = parseFloat((totalMeters / 1000).toFixed(2));
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] Distance records count: ${distRecords?.records?.length || 0}, Total Distance: ${distanceKm} km`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read Distance records:', e?.message || e);
+      }
 
       let heartRate = 0;
       try {
@@ -182,7 +238,10 @@ export class HealthConnectAdapter implements HealthAdapter {
           });
           if (count > 0) heartRate = Math.round(sumBpm / count);
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] HeartRate records count: ${hrRecords?.records?.length || 0}, Avg HR: ${heartRate} bpm`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read HeartRate records:', e?.message || e);
+      }
 
       let sleepMinutes = 0;
       try {
@@ -198,7 +257,10 @@ export class HealthConnectAdapter implements HealthAdapter {
           });
           sleepMinutes = Math.round(totalMs / (1000 * 60));
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] SleepSession records count: ${sleepRecords?.records?.length || 0}, Total Sleep: ${sleepMinutes} mins`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read SleepSession records:', e?.message || e);
+      }
 
       let workoutCount = 0;
       try {
@@ -206,7 +268,10 @@ export class HealthConnectAdapter implements HealthAdapter {
         if (workoutRecords?.records) {
           workoutCount = workoutRecords.records.length;
         }
-      } catch (_) {}
+        devLog(`   [HealthConnect] ExerciseSession records count: ${workoutCount}`);
+      } catch (e: any) {
+        devWarn('   [HealthConnect] Failed to read ExerciseSession records:', e?.message || e);
+      }
 
       const activeMinutes = Math.min(Math.round(steps / 100) + (workoutCount * 30), 180);
 
@@ -221,21 +286,21 @@ export class HealthConnectAdapter implements HealthAdapter {
         workoutCount,
       };
 
-      console.log('----------------------------------------------------');
-      console.log('📊 [HealthConnectAdapter] Live Health Summary Read from Android:');
-      console.log('   Date:', summary.date);
-      console.log('   Steps:', summary.steps);
-      console.log('   Calories (kcal):', summary.calories);
-      console.log('   Distance (km):', summary.distanceKm);
-      console.log('   Heart Rate (bpm):', summary.heartRate);
-      console.log('   Sleep (mins):', summary.sleepMinutes);
-      console.log('   Active Mins:', summary.activeMinutes);
-      console.log('   Workouts:', summary.workoutCount);
-      console.log('----------------------------------------------------');
+      devLog('----------------------------------------------------');
+      devLog('📊 [HealthConnectAdapter] Live Health Summary Read from Android:');
+      devLog('   Date:', summary.date);
+      devLog('   Steps:', summary.steps);
+      devLog('   Calories (kcal):', summary.calories);
+      devLog('   Distance (km):', summary.distanceKm);
+      devLog('   Heart Rate (bpm):', summary.heartRate);
+      devLog('   Sleep (mins):', summary.sleepMinutes);
+      devLog('   Active Mins:', summary.activeMinutes);
+      devLog('   Workouts:', summary.workoutCount);
+      devLog('----------------------------------------------------');
 
       return summary;
     } catch (e: any) {
-      console.warn('[HealthConnectAdapter] getTodaySummary failed:', e);
+      devWarn('[HealthConnectAdapter] getTodaySummary failed:', e);
       return emptySummary;
     }
   }
@@ -350,7 +415,7 @@ export class HealthConnectAdapter implements HealthAdapter {
         workoutCount,
       };
     } catch (e) {
-      console.warn('[HealthConnectAdapter] getYesterdaySummary failed:', e);
+      devWarn('[HealthConnectAdapter] getYesterdaySummary failed:', e);
       return emptySummary;
     }
   }
@@ -416,19 +481,19 @@ export class HealthConnectAdapter implements HealthAdapter {
         };
       });
 
-      console.log('----------------------------------------------------');
-      console.log('📅 [HealthConnectAdapter] Weekly Steps Read from Health Connect:');
-      console.log(`   Time Window: ${startOfWeek} -> ${endOfWeek}`);
-      console.log(`   Total Step Records Count: ${stepRecords?.records?.length || 0}`);
+      devLog('----------------------------------------------------');
+      devLog('📅 [HealthConnectAdapter] Weekly Steps Read from Health Connect:');
+      devLog(`   Time Window: ${startOfWeek} -> ${endOfWeek}`);
+      devLog(`   Total Step Records Count: ${stepRecords?.records?.length || 0}`);
       samples.forEach((s, idx) => {
         const dateStr = weekDays[idx].dateStr;
-        console.log(`   ${s.day} (${dateStr}): ${s.steps} steps ${s.isCurrent ? '👈 [TODAY]' : ''}`);
+        devLog(`   ${s.day} (${dateStr}): ${s.steps} steps ${s.isCurrent ? '👈 [TODAY]' : ''}`);
       });
-      console.log('----------------------------------------------------');
+      devLog('----------------------------------------------------');
 
       return samples;
     } catch (e: any) {
-      console.warn('[HealthConnectAdapter] getWeekBarSamples failed:', e);
+      devWarn('[HealthConnectAdapter] getWeekBarSamples failed:', e);
       return emptyBars;
     }
   }

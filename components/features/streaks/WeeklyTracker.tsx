@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo } from 'react';
-import { Image, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Animated, { useAnimatedStyle, useSharedValue, withTiming } from 'react-native-reanimated';
 import { Image as ExpoImage } from 'expo-image';
 import { Ionicons, MaterialCommunityIcons } from '@expo/vector-icons';
@@ -8,10 +8,8 @@ import Svg, { Circle, Path } from 'react-native-svg';
 import { fontFamilies } from '@/theme/typography';
 import { getAvatarSource } from '@/app/(tabs)/profile';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
-import { DEFAULT_BLURHASH } from '@/services/media/cloudinary';
 import type { WeekStatus } from '@/types/user';
 import { WeeklyProgressCard } from './WeeklyProgressCard';
-import { StreakBadgesCarousel } from './StreakBadgesCarousel';
 
 export type DayStatus = 'completed' | 'today' | 'missed' | 'locked' | 'freeze';
 
@@ -35,7 +33,6 @@ interface WeeklyTrackerProps {
   characterImageSource?: any;
   avatarUrl?: string | null;
   avatarId?: string | number | null;
-  userBadges?: any[];
   showBottomCard?: boolean;
   onDayPress?: (day: DayTrackerItem) => void;
 }
@@ -237,7 +234,6 @@ export function WeeklyTracker({
   characterImageSource = DEFAULT_CHARACTER_IMAGE,
   avatarUrl,
   avatarId,
-  userBadges,
   showBottomCard = false,
   onDayPress,
 }: WeeklyTrackerProps) {
@@ -431,8 +427,7 @@ export function WeeklyTracker({
         />
       )}
 
-      {/* STREAK BADGES CAROUSEL (7 BADGES, 4 IN VIEW RESPONSIVE) */}
-      <StreakBadgesCarousel currentStreak={streakDays} userBadges={userBadges} />
+
 
       {/* 
       BOTTOM CARD SECTION (Preserved as commented-out code)

@@ -3,18 +3,33 @@ import { StyleSheet, Text, View, TouchableOpacity } from 'react-native';
 import * as Haptics from 'expo-haptics';
 import { fontFamilies } from '@/theme/typography';
 import { TimeRange } from '@/store/useMetricsStore';
+import { useToastStore } from '@/store/useToastStore';
 
 interface TimeRangeSelectorProps {
   selected: TimeRange;
   onSelect: (range: TimeRange) => void;
+  availableRanges?: TimeRange[];
 }
 
 const RANGES: TimeRange[] = ['Today', 'Week', 'Month', 'Year'];
 
-export function TimeRangeSelector({ selected, onSelect }: TimeRangeSelectorProps) {
+export function TimeRangeSelector({
+  selected,
+  onSelect,
+  availableRanges = ['Today'],
+}: TimeRangeSelectorProps) {
+  const showToast = useToastStore((state) => state.showToast);
+
   const handleSelect = (range: TimeRange) => {
+    const isAvailable = availableRanges.includes(range);
+    Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
+
+    if (!isAvailable) {
+      showToast('Stats stack up automatically as you move', 'info', 3000, false);
+      return;
+    }
+
     if (range !== selected) {
-      Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);
       onSelect(range);
     }
   };
@@ -23,14 +38,26 @@ export function TimeRangeSelector({ selected, onSelect }: TimeRangeSelectorProps
     <View style={styles.container}>
       {RANGES.map((range) => {
         const isSelected = range === selected;
+        const isAvailable = availableRanges.includes(range);
+
         return (
           <TouchableOpacity
             key={range}
-            style={[styles.pill, isSelected && styles.activePill]}
+            style={[
+              styles.pill,
+              isSelected && styles.activePill,
+              !isAvailable && !isSelected && styles.disabledPill,
+            ]}
             onPress={() => handleSelect(range)}
-            activeOpacity={0.7}
+            activeOpacity={isAvailable ? 0.7 : 0.85}
           >
-            <Text style={[styles.pillText, isSelected && styles.activePillText]}>
+            <Text
+              style={[
+                styles.pillText,
+                isSelected && styles.activePillText,
+                !isAvailable && !isSelected && styles.disabledPillText,
+              ]}
+            >
               {range}
             </Text>
           </TouchableOpacity>
@@ -69,6 +96,9 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  disabledPill: {
+    opacity: 0.35,
+  },
   pillText: {
     fontFamily: fontFamilies.medium,
     fontSize: 13,
@@ -77,5 +107,8 @@ const styles = StyleSheet.create({
   activePillText: {
     fontFamily: fontFamilies.bold,
     color: '#FFFFFF',
+  },
+  disabledPillText: {
+    color: '#52525B',
   },
 });

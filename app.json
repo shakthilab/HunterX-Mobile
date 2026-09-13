@@ -62,7 +62,7 @@
         }
       ],
       "expo-web-browser",
-      "react-native-health",
+      "@kingstinct/react-native-healthkit",
       "react-native-health-connect"
     ],
     "experiments": {

@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import {
   Dimensions,
-  ImageBackground,
   Modal,
   Pressable,
   Share,
@@ -10,6 +9,7 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { Image as ExpoImage } from 'expo-image';
 import { Ionicons } from '@expo/vector-icons';
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
@@ -26,6 +26,7 @@ import Animated, {
 import { QuestItem } from '@/app/(tabs)/index';
 import { fontFamilies } from '@/theme/typography';
 import { CLOUDINARY_ASSETS } from '@/constants/cloudinaryAssets';
+import { optimizeCloudinaryUrl } from '@/services/media/cloudinary';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -349,17 +350,20 @@ export function DayCompleteScreen({ quests, onContinue }: DayCompleteScreenProps
         </TouchableOpacity>
 
         {/* FULL BLEED ANIME BACKGROUND IMAGE */}
-        <ImageBackground
-          source={CLOUDINARY_ASSETS.popupsavatar}
-          defaultSource={CLOUDINARY_ASSETS.active_campaign_bg}
-          style={StyleSheet.absoluteFillObject}
-          resizeMode="cover"
-        >
+        <View style={StyleSheet.absoluteFillObject}>
+          <ExpoImage
+            source={{ uri: optimizeCloudinaryUrl(CLOUDINARY_ASSETS.popupsavatar.uri, 1200) }}
+            placeholder={{ uri: optimizeCloudinaryUrl(CLOUDINARY_ASSETS.active_campaign_bg.uri, 1200) }}
+            style={StyleSheet.absoluteFillObject}
+            contentFit="cover"
+            cachePolicy="memory-disk"
+            transition={200}
+          />
           <LinearGradient
             colors={['rgba(10,10,10,0.3)', 'rgba(10,10,10,0.65)']}
             style={StyleSheet.absoluteFillObject}
           />
-        </ImageBackground>
+        </View>
 
         {/* Background Ember Particles */}
         <View style={styles.particleContainer} pointerEvents="none">

@@ -53,7 +53,7 @@ export default function TabsLayout() {
           title: 'Home',
           tabBarIcon: ({ focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <Ionicons name="home-sharp" size={20} color={focused ? '#FFFFFF' : '#71717A'} />
+              <Ionicons name="home-sharp" size={20} color={focused ? '#FE5B01' : '#71717A'} />
             </View>
           ),
         }}
@@ -76,29 +76,19 @@ export default function TabsLayout() {
           title: 'Battles',
           tabBarIcon: ({ focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <MaterialCommunityIcons name="sword-cross" size={22} color={focused ? '#FFFFFF' : '#71717A'} />
+              <MaterialCommunityIcons name="sword-cross" size={22} color={focused ? '#FE5B01' : '#71717A'} />
             </View>
           ),
         }}
       />
-      <Tabs.Screen
-        name="achievements"
-        options={{
-          title: 'Inventory',
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <MaterialCommunityIcons name="package-variant-closed" size={22} color={focused ? '#FFFFFF' : '#71717A'} />
-            </View>
-          ),
-        }}
-      />
+
       <Tabs.Screen
         name="profile"
         options={{
           title: 'Profile',
           tabBarIcon: ({ focused }) => (
             <View style={[styles.iconContainer, focused && styles.activeIconContainer]}>
-              <Ionicons name="person-outline" size={20} color={focused ? '#FFFFFF' : '#71717A'} />
+              <Ionicons name="person-outline" size={20} color={focused ? '#FE5B01' : '#71717A'} />
             </View>
           ),
         }}

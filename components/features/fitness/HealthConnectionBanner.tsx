@@ -3,6 +3,7 @@ import { StyleSheet, Text, View, TouchableOpacity, ActivityIndicator } from 'rea
 import { Ionicons } from '@expo/vector-icons';
 import { LinearGradient } from 'expo-linear-gradient';
 import * as Haptics from 'expo-haptics';
+import { useShallow } from 'zustand/react/shallow';
 import { fontFamilies } from '@/theme/typography';
 import { useMetricsStore } from '@/store/useMetricsStore';
 
@@ -11,7 +12,17 @@ interface HealthConnectionBannerProps {
 }
 
 export function HealthConnectionBanner({ onPress }: HealthConnectionBannerProps) {
-  const { isHealthConnected, lastSyncedText, isSyncing } = useMetricsStore();
+  // Selecting just these three fields (instead of the whole store) matters
+  // here specifically: useMetricsStore's `datasets` field changes on every
+  // focus/foreground/sync refresh, and without a selector this banner would
+  // re-render on every one of those even though it never reads `datasets`.
+  const { isHealthConnected, lastSyncedText, isSyncing } = useMetricsStore(
+    useShallow((state) => ({
+      isHealthConnected: state.isHealthConnected,
+      lastSyncedText: state.lastSyncedText,
+      isSyncing: state.isSyncing,
+    }))
+  );
 
   const handlePress = () => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Light);

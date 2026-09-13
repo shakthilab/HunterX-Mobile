@@ -1,5 +1,6 @@
 import React from 'react';
-import { StyleSheet, View, Image, Dimensions } from 'react-native';
+import { StyleSheet, View, Dimensions } from 'react-native';
+import { Image } from 'expo-image';
 import { LinearGradient } from 'expo-linear-gradient';
 
 const METRIX_FIT_IMG = require('@/assets/images/metrixfit.jpg');
@@ -32,7 +33,7 @@ export function MountainHeaderGraphic({
             right: IMAGE_RIGHT,
           },
         ]}
-        resizeMode="cover"
+        contentFit="cover"
       />
 
       {/* Left dark gradient so the title, brand text & back button remain razor sharp */}
