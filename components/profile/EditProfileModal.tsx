@@ -95,7 +95,7 @@ export function EditProfileModal({
   const [profileForm, setProfileForm] = useState<EditProfileFormData>({
     name: 'Shadow Hunter',
     gender: 'Male',
-    birthday: '15/06/98',
+    birthday: '',
     height: '181',
     heightUnit: 'cm',
     weight: '75',
@@ -106,7 +106,7 @@ export function EditProfileModal({
   const [initialForm, setInitialForm] = useState<EditProfileFormData>({
     name: 'Shadow Hunter',
     gender: 'Male',
-    birthday: '15/06/98',
+    birthday: '',
     height: '181',
     heightUnit: 'cm',
     weight: '75',
@@ -156,7 +156,7 @@ export function EditProfileModal({
       const newForm: EditProfileFormData = {
         name: user?.name || user?.displayName || 'Shadow Hunter',
         gender: user?.gender || 'Male',
-        birthday: formatBirthday(user?.date_of_birth || user?.dob || user?.birthday || '15/06/98'),
+        birthday: formatBirthday(user?.date_of_birth || user?.dob || user?.birthday || null),
         height: heightDisplay,
         heightUnit: isImp ? 'ft' : 'cm',
         weight: weightDisplay,
@@ -230,6 +230,11 @@ export function EditProfileModal({
         if (!isNaN(m) && m >= 1 && m <= 12) setPickerMonthIndex(m - 1);
         if (!isNaN(y) && y >= 1950 && y <= 2030) setPickerYear(y);
       }
+    } else if (user?.age) {
+      const calculatedYear = new Date().getFullYear() - user.age;
+      setPickerYear(calculatedYear);
+      setPickerMonthIndex(0);
+      setPickerDay(1);
     }
     setPickerMode('DAY');
     setIsDatePickerVisible(true);
