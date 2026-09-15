@@ -92,6 +92,16 @@ export default function RootLayout() {
     Inter_400Regular_Italic,
     Inter_600SemiBold_Italic,
     Inter_700Bold_Italic,
+    PermanentMarker_400Regular:
+      'https://fonts.gstatic.com/s/permanentmarker/v16/Fh4uPib9Iyv2ucM6pGQMWimMp004Hao.ttf',
+    SedgwickAveDisplay_400Regular:
+      'https://fonts.gstatic.com/s/sedgwickavedisplay/v23/xfuu0XPgU3jZPUoUo3ScvmPi-NapQ8OxM2cz.ttf',
+    RockSalt_400Regular:
+      'https://fonts.gstatic.com/s/rocksalt/v24/MwQ0bhv11fWD6QsAVOZbsA.ttf',
+    Lacquer_400Regular:
+      'https://fonts.gstatic.com/s/lacquer/v16/EYqzma1QwqpG4_BBB78.ttf',
+    Shojumaru_400Regular:
+      'https://fonts.gstatic.com/s/shojumaru/v16/rax_HiWfutkLLnaKCtlMBA.ttf',
   });
 
   // Runs once on app start — reads the persisted access token and warms image cache

@@ -9,6 +9,11 @@ export const fontFamilies = {
   mediumItalic: 'Inter_500Medium_Italic',
   semiBoldItalic: 'Inter_600SemiBold_Italic',
   boldItalic: 'Inter_700Bold_Italic',
+  brush: 'PermanentMarker_400Regular',
+  grunge: 'SedgwickAveDisplay_400Regular',
+  rockSalt: 'RockSalt_400Regular',
+  lacquer: 'Lacquer_400Regular',
+  shojumaru: 'Shojumaru_400Regular',
 };
 
 export const fontFamily = Platform.select({
